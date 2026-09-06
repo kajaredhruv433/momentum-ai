@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -208,16 +209,36 @@ export default function JobsPage() {
                                     <div className="flex items-center gap-3">
                                         {isApplied ? (
                                             <div className="flex items-center gap-2">
-                                                <Badge className="bg-emerald-500/15 text-emerald-500 border border-emerald-500/20 py-2 px-3 rounded-full flex gap-1.5 font-semibold">
-                                                    <CheckCircle2 className="h-4 w-4" /> Applied
-                                                </Badge>
-                                                <Button
-                                                    onClick={() => handleGiveInterview(job, application?.id || application?._id)}
-                                                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-full px-6 py-2 transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-2"
-                                                >
-                                                    <Play className="h-4 w-4 fill-white" />
-                                                    {isCompleted ? `Re-Join Interview (${application.matchScore}%)` : "Give Interview"}
-                                                </Button>
+                                                {isCompleted ? (
+                                                    <>
+                                                        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 py-2 px-3.5 rounded-full flex gap-1.5 font-bold shadow-sm">
+                                                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                            Interview Completed ({application?.matchScore || application?.score || 0}%)
+                                                        </Badge>
+                                                        <Link href="/dashboard/interviews">
+                                                            <Button
+                                                                variant="outline"
+                                                                className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold rounded-full px-5 py-2 transition-all flex items-center gap-1.5"
+                                                            >
+                                                                <FileText className="h-4 w-4" />
+                                                                View Report
+                                                            </Button>
+                                                        </Link>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Badge className="bg-blue-500/15 text-blue-500 border border-blue-500/20 py-2 px-3 rounded-full flex gap-1.5 font-semibold">
+                                                            <CheckCircle2 className="h-4 w-4" /> Applied
+                                                        </Badge>
+                                                        <Button
+                                                            onClick={() => handleGiveInterview(job, application?.id || application?._id)}
+                                                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-full px-6 py-2 transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-2"
+                                                        >
+                                                            <Play className="h-4 w-4 fill-white" />
+                                                            Give Interview
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </div>
                                         ) : (
                                             <Button

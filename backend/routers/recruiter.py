@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from backend.database import get_db, serialize_doc
 
@@ -9,6 +9,14 @@ router = APIRouter(prefix="/api/recruiter", tags=["recruiter"])
 class RecruiterApplicantsRequest(BaseModel):
     recruiterUid: str
     jobId: Optional[str] = None
+
+class HireCandidateRequest(BaseModel):
+    applicationId: str
+    recruiterUid: Optional[str] = None
+
+class HireBatchRequest(BaseModel):
+    applicationIds: List[str]
+    recruiterUid: Optional[str] = None
 
 @router.post("/applicants")
 async def get_recruiter_applicants(req: RecruiterApplicantsRequest):
@@ -43,7 +51,15 @@ async def get_recruiter_applicants(req: RecruiterApplicantsRequest):
         else:
             applied_str = str(applied_date or "")
 
-        is_finished = app.get("status") == "Completed" or app.get("report") is not None
+        match_score = app.get("matchScore") if app.get("matchScore") is not None else app.get("score", 0)
+        app_status = app.get("status", "Applied")
+        is_finished = app_status in ["Completed", "Hired"] or app.get("report") is not None
+        
+        rep = app.get("report")
+        feedback_val = ""
+        if isinstance(rep, dict):
+            feedback_val = rep.get("final_recommendation") or ""
+        feedback_val = feedback_val or app.get("coverNote") or "Application submitted."
 
         candidates.append({
             "id": str(app["_id"]),
@@ -61,10 +77,11 @@ async def get_recruiter_applicants(req: RecruiterApplicantsRequest):
             "communicationScore": app.get("communicationScore", 0),
             "problemSolvingScore": app.get("problemSolvingScore", 0),
             "recommendation": app.get("recommendation", "Pending"),
-            "status": "Completed" if is_finished else app.get("status", "Applied"),
+            "status": app_status,
+            "isHired": app_status == "Hired",
             "interviewFinished": is_finished,
-            "report": app.get("report"),
-            "feedback": (app.get("report", {}) or {}).get("final_recommendation") or app.get("coverNote") or "Application submitted.",
+            "report": rep,
+            "feedback": feedback_val,
             "email": app.get("applicantEmail", "")
         })
 
@@ -86,7 +103,7 @@ async def get_interviewed_candidates(req: RecruiterApplicantsRequest):
     job_ids = [j["_id"] for j in recruiter_jobs]
 
     completion_criteria = [
-        {"status": "Completed"},
+        {"status": {"$in": ["Completed", "Hired"]}},
         {"report": {"$ne": None}},
         {"matchScore": {"$gt": 0}}
     ]
@@ -123,6 +140,13 @@ async def get_interviewed_candidates(req: RecruiterApplicantsRequest):
             applied_str = str(applied_date or "")
 
         match_score = app.get("matchScore") if app.get("matchScore") is not None else app.get("score", 0)
+        app_status = app.get("status", "Completed")
+
+        rec_val = app.get("recommendation")
+        rep = app.get("report")
+        if not rec_val and isinstance(rep, dict):
+            rec_val = rep.get("final_recommendation")
+        rec_val = rec_val or "Consider"
 
         candidates.append({
             "rank": idx + 1,
@@ -140,10 +164,11 @@ async def get_interviewed_candidates(req: RecruiterApplicantsRequest):
             "technicalScore": app.get("technicalScore", 0),
             "communicationScore": app.get("communicationScore", 0),
             "problemSolvingScore": app.get("problemSolvingScore", 0),
-            "recommendation": app.get("recommendation", (app.get("report", {}) or {}).get("final_recommendation", "Consider")),
-            "status": "Completed",
+            "recommendation": rec_val,
+            "status": app_status,
+            "isHired": app_status == "Hired",
             "interviewFinished": True,
-            "report": app.get("report"),
+            "report": rep,
             "email": app.get("applicantEmail", "")
         })
 
@@ -154,3 +179,43 @@ async def get_interviewed_candidates(req: RecruiterApplicantsRequest):
 
     return candidates
 
+@router.post("/hire")
+async def hire_candidate(req: HireCandidateRequest):
+    """Mark an individual candidate as Hired in MongoDB."""
+    db = get_db()
+    try:
+        from bson import ObjectId
+        obj_id = ObjectId(req.applicationId)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid applicationId")
+
+    result = await db.applications.update_one(
+        {"_id": obj_id},
+        {"$set": {"status": "Hired", "hiredAt": datetime.utcnow()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    updated = await db.applications.find_one({"_id": obj_id})
+    return serialize_doc(updated)
+
+@router.post("/hire-batch")
+async def hire_batch_candidates(req: HireBatchRequest):
+    """Mark a batch of candidates (e.g. Top N) as Hired in MongoDB."""
+    db = get_db()
+    from bson import ObjectId
+    obj_ids = []
+    for aid in req.applicationIds:
+        try:
+            obj_ids.append(ObjectId(aid))
+        except Exception:
+            pass
+
+    if not obj_ids:
+        raise HTTPException(status_code=400, detail="No valid applicationIds provided")
+
+    result = await db.applications.update_many(
+        {"_id": {"$in": obj_ids}},
+        {"$set": {"status": "Hired", "hiredAt": datetime.utcnow()}}
+    )
+    return {"success": True, "hiredCount": result.modified_count}

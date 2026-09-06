@@ -53,16 +53,30 @@ export default function RecruiterHome() {
                 }
 
                 // Fetch Jobs (for Active Jobs count)
-                const jobsRes = await fetch(`/api/jobs?recruiterUid=${user.uid}`)
-                const jobsData = await jobsRes.json()
+                let jobsData: any[] = []
+                try {
+                    const jobsRes = await fetch(`/api/jobs?recruiterUid=${user.uid}`)
+                    if (jobsRes.ok) {
+                        jobsData = await jobsRes.json()
+                    }
+                } catch (e) {
+                    console.error("Jobs fetch error:", e)
+                }
 
                 // Fetch Applicants
-                const applicantsRes = await fetch('/api/recruiter/applicants', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ recruiterUid: user.uid })
-                })
-                const applicantsData = await applicantsRes.json()
+                let applicantsData: any[] = []
+                try {
+                    const applicantsRes = await fetch('/api/recruiter/applicants', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ recruiterUid: user.uid })
+                    })
+                    if (applicantsRes.ok) {
+                        applicantsData = await applicantsRes.json()
+                    }
+                } catch (e) {
+                    console.error("Applicants fetch error:", e)
+                }
 
                 // Fetch Interviewed candidates (sorted descending by match score)
                 let interviewedData: any[] = []
@@ -75,14 +89,16 @@ export default function RecruiterHome() {
                     if (interviewedRes.ok) {
                         interviewedData = await interviewedRes.json()
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.error("Interviewed candidates fetch error:", e)
+                }
 
-                const pending = applicantsData.filter((a: any) => a.status === 'Applied' || a.status === 'Screening').length
-                const shortlistedCount = applicantsData.filter((a: any) => a.status === 'Shortlisted' || a.status === 'Completed').length
+                const pending = (Array.isArray(applicantsData) ? applicantsData : []).filter((a: any) => a.status === 'Applied' || a.status === 'Screening').length
+                const shortlistedCount = (Array.isArray(applicantsData) ? applicantsData : []).filter((a: any) => a.status === 'Shortlisted' || a.status === 'Completed' || a.status === 'Hired').length
 
                 setStats({
-                    activeJobs: jobsData.length,
-                    totalApplicants: applicantsData.length,
+                    activeJobs: Array.isArray(jobsData) ? jobsData.length : 0,
+                    totalApplicants: Array.isArray(applicantsData) ? applicantsData.length : 0,
                     pendingReview: pending,
                     shortlisted: shortlistedCount
                 })
@@ -90,8 +106,10 @@ export default function RecruiterHome() {
                 // Prioritize top interviewed candidates, fallback to applicants
                 if (interviewedData.length > 0) {
                     setRecentApplicants(interviewedData.slice(0, 3))
-                } else {
+                } else if (applicantsData.length > 0) {
                     setRecentApplicants(applicantsData.slice(0, 3))
+                } else {
+                    setRecentApplicants([])
                 }
 
             } catch (error) {

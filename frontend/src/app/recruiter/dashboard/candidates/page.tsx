@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, User, Mail, Calendar, Loader2, Sparkles, Trophy, Award, CheckCircle2, ChevronRight, X, FileText, BarChart2 } from "lucide-react"
+import { Search, User, Mail, Calendar, Loader2, Sparkles, Trophy, Award, CheckCircle2, ChevronRight, X, FileText, BarChart2, UserCheck, CheckSquare, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -22,6 +22,10 @@ export default function CandidatesPage() {
     const [loading, setLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
     const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null)
+    const [selectedIds, setSelectedIds] = useState<string[]>([])
+    const [topNInput, setTopNInput] = useState<number>(3)
+    const [hiringLoading, setHiringLoading] = useState(false)
+    const [hiredMessage, setHiredMessage] = useState<string | null>(null)
 
     useEffect(() => {
         const fetchData = async (user: any) => {
@@ -85,6 +89,114 @@ export default function CandidatesPage() {
     const avgMatch = interviewedCandidates.length > 0
         ? Math.round(interviewedCandidates.reduce((acc, c) => acc + (c.matchScore || 0), 0) / interviewedCandidates.length)
         : 0
+    const hiredCount = interviewedCandidates.filter(c => c.isHired || c.status === 'Hired').length
+
+    // Selection handlers
+    const handleToggleSelect = (id: string) => {
+        setSelectedIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        )
+    }
+
+    const handleSelectAll = () => {
+        const unhired = filteredInterviewed.filter(c => !c.isHired && c.status !== 'Hired')
+        if (selectedIds.length === unhired.length) {
+            setSelectedIds([])
+        } else {
+            setSelectedIds(unhired.map(c => c.applicationId || c.id))
+        }
+    }
+
+    // Single candidate hire
+    const handleHireSingle = async (candidate: any) => {
+        const appId = candidate.applicationId || candidate.id
+        setHiringLoading(true)
+        try {
+            const user = auth.currentUser
+            const res = await fetch('/api/recruiter/hire', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    applicationId: appId,
+                    recruiterUid: user?.uid
+                })
+            })
+
+            if (res.ok) {
+                setInterviewedCandidates(prev => prev.map(c => 
+                    (c.applicationId === appId || c.id === appId) ? { ...c, isHired: true, status: 'Hired' } : c
+                ))
+                setAllApplicants(prev => prev.map(c => 
+                    (c.applicationId === appId || c.id === appId) ? { ...c, isHired: true, status: 'Hired' } : c
+                ))
+                if (selectedCandidate && (selectedCandidate.applicationId === appId || selectedCandidate.id === appId)) {
+                    setSelectedCandidate((prev: any) => prev ? { ...prev, isHired: true, status: 'Hired' } : null)
+                }
+                setSelectedIds(prev => prev.filter(x => x !== appId))
+                setHiredMessage(`Successfully hired ${candidate.name}! 🎉`)
+                setTimeout(() => setHiredMessage(null), 5000)
+            } else {
+                const err = await res.json()
+                alert(err.detail || "Failed to hire candidate")
+            }
+        } catch (e) {
+            console.error("Error hiring candidate:", e)
+            alert("An error occurred while hiring candidate.")
+        } finally {
+            setHiringLoading(false)
+        }
+    }
+
+    // Batch candidate hire
+    const handleHireBatch = async (appIds: string[], label?: string) => {
+        if (!appIds || appIds.length === 0) return
+        setHiringLoading(true)
+        try {
+            const user = auth.currentUser
+            const res = await fetch('/api/recruiter/hire-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    applicationIds: appIds,
+                    recruiterUid: user?.uid
+                })
+            })
+
+            if (res.ok) {
+                const data = await res.json()
+                const idSet = new Set(appIds)
+                setInterviewedCandidates(prev => prev.map(c => 
+                    idSet.has(c.applicationId) || idSet.has(c.id) ? { ...c, isHired: true, status: 'Hired' } : c
+                ))
+                setAllApplicants(prev => prev.map(c => 
+                    idSet.has(c.applicationId) || idSet.has(c.id) ? { ...c, isHired: true, status: 'Hired' } : c
+                ))
+                setSelectedIds([])
+                setHiredMessage(label || `Successfully hired ${data.hiredCount || appIds.length} candidate(s)! 🎉`)
+                setTimeout(() => setHiredMessage(null), 5000)
+            } else {
+                const err = await res.json()
+                alert(err.detail || "Failed to batch hire candidates")
+            }
+        } catch (e) {
+            console.error("Error hiring candidates:", e)
+            alert("An error occurred while hiring candidates.")
+        } finally {
+            setHiringLoading(false)
+        }
+    }
+
+    // Top N Hire
+    const handleHireTopN = (n: number) => {
+        const unhiredCandidates = filteredInterviewed.filter(c => !c.isHired && c.status !== 'Hired')
+        if (unhiredCandidates.length === 0) {
+            alert("All interviewed candidates are already hired!")
+            return
+        }
+        const topCandidates = unhiredCandidates.slice(0, n)
+        const appIds = topCandidates.map(c => c.applicationId || c.id)
+        handleHireBatch(appIds, `Successfully hired Top ${topCandidates.length} candidate(s) based on match score leaderboard! 🏆`)
+    }
 
     return (
         <div className="space-y-8 pb-12 max-w-7xl mx-auto">
@@ -111,6 +223,19 @@ export default function CandidatesPage() {
                 </div>
             </div>
 
+            {/* Notification Banner */}
+            {hiredMessage && (
+                <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 p-4 rounded-2xl flex items-center justify-between shadow-lg shadow-emerald-500/10 animate-in fade-in slide-in-from-top duration-300">
+                    <div className="flex items-center gap-3">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                        <span className="font-bold text-sm">{hiredMessage}</span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setHiredMessage(null)} className="text-emerald-400 hover:bg-emerald-500/20 h-7 w-7 p-0 rounded-lg">
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
+
             {/* Metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="border-slate-800 bg-slate-950/60 shadow-lg">
@@ -120,7 +245,7 @@ export default function CandidatesPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-black text-slate-100">{interviewedCandidates.length}</div>
-                        <p className="text-xs text-slate-400 mt-1">Evaluated by EchoSphere v9</p>
+                        <p className="text-xs text-slate-400 mt-1">Evaluated by EchoSphere</p>
                     </CardContent>
                 </Card>
 
@@ -137,12 +262,12 @@ export default function CandidatesPage() {
 
                 <Card className="border-slate-800 bg-slate-950/60 shadow-lg">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Average Match</CardTitle>
-                        <BarChart2 className="h-4 w-4 text-blue-400" />
+                        <CardTitle className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Hired Candidates</CardTitle>
+                        <UserCheck className="h-4 w-4 text-emerald-400" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-black text-blue-400">{avgMatch}%</div>
-                        <p className="text-xs text-slate-400 mt-1">Across all completed interviews</p>
+                        <div className="text-3xl font-black text-emerald-400">{hiredCount}</div>
+                        <p className="text-xs text-slate-400 mt-1">Accepted and hired</p>
                     </CardContent>
                 </Card>
 
@@ -160,7 +285,7 @@ export default function CandidatesPage() {
 
             {/* SECTION 1: INTERVIEWED CANDIDATES (RANKED IN DESCENDING ORDER) */}
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
                             <Trophy className="h-5 w-5" />
@@ -170,9 +295,83 @@ export default function CandidatesPage() {
                             <p className="text-xs text-slate-400">Arranged in descending order of match score given by interviewer</p>
                         </div>
                     </div>
-                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-400 font-bold">
+                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-400 font-bold self-start sm:self-auto">
                         Ranked Leaderboard
                     </Badge>
+                </div>
+
+                {/* Hiring Action & Quick Presets Toolbar */}
+                <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-xl">
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSelectAll}
+                            className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl"
+                        >
+                            {selectedIds.length > 0 && selectedIds.length === filteredInterviewed.filter(c => !c.isHired && c.status !== 'Hired').length
+                                ? "Deselect All"
+                                : "Select All Unhired"}
+                        </Button>
+
+                        {selectedIds.length > 0 && (
+                            <Button
+                                size="sm"
+                                onClick={() => handleHireBatch(selectedIds)}
+                                disabled={hiringLoading}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl px-4 shadow-lg shadow-emerald-500/20 flex items-center gap-1.5"
+                            >
+                                <UserCheck className="h-4 w-4" />
+                                Hire Selected ({selectedIds.length})
+                            </Button>
+                        )}
+
+                        <span className="text-xs text-slate-400 font-medium">
+                            {selectedIds.length} candidate{selectedIds.length === 1 ? '' : 's'} selected
+                        </span>
+                    </div>
+
+                    {/* Hire Top N Candidates Control */}
+                    <div className="flex items-center gap-2 flex-wrap bg-slate-950/70 border border-slate-800/80 rounded-xl p-1.5">
+                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1 px-2">
+                            <Trophy className="h-3.5 w-3.5" /> Hire Top:
+                        </span>
+                        {[1, 3, 5, 10].map(preset => (
+                            <Button
+                                key={preset}
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => { setTopNInput(preset); handleHireTopN(preset) }}
+                                disabled={hiringLoading || filteredInterviewed.filter(c => !c.isHired && c.status !== 'Hired').length === 0}
+                                className={cn(
+                                    "h-7 px-2.5 text-xs font-bold rounded-lg transition-all",
+                                    topNInput === preset
+                                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                        : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                )}
+                            >
+                                Top {preset}
+                            </Button>
+                        ))}
+                        <div className="flex items-center gap-1.5 pl-1.5 border-l border-slate-800">
+                            <input
+                                type="number"
+                                min={1}
+                                max={Math.max(filteredInterviewed.length, 1)}
+                                value={topNInput}
+                                onChange={(e) => setTopNInput(Math.max(1, parseInt(e.target.value) || 1))}
+                                className="w-12 h-7 rounded-lg bg-slate-900 border border-slate-700 text-center text-xs font-bold text-slate-200 outline-none focus:border-amber-400"
+                            />
+                            <Button
+                                size="sm"
+                                onClick={() => handleHireTopN(topNInput)}
+                                disabled={hiringLoading || filteredInterviewed.filter(c => !c.isHired && c.status !== 'Hired').length === 0}
+                                className="h-7 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-amber-950 font-black text-xs rounded-lg shadow-md shadow-amber-500/10 flex items-center gap-1"
+                            >
+                                <Sparkles className="h-3.5 w-3.5" /> Hire Top {topNInput}
+                            </Button>
+                        </div>
+                    </div>
                 </div>
 
                 <Card className="border-slate-800 bg-slate-950/80 shadow-2xl overflow-hidden">
@@ -198,6 +397,9 @@ export default function CandidatesPage() {
                                     {filteredInterviewed.map((candidate, index) => {
                                         const rank = candidate.rank || (index + 1)
                                         const isTop3 = rank <= 3
+                                        const isHired = candidate.isHired || candidate.status === 'Hired'
+                                        const isSelected = selectedIds.includes(candidate.applicationId || candidate.id)
+
                                         const medalColor = rank === 1
                                             ? "from-amber-400 to-amber-600 text-amber-950 shadow-amber-500/30"
                                             : rank === 2
@@ -221,10 +423,23 @@ export default function CandidatesPage() {
                                                 exit={{ opacity: 0, scale: 0.95 }}
                                                 transition={{ delay: index * 0.04 }}
                                                 key={candidate.id || candidate.applicationId || index}
-                                                className="group flex flex-col md:flex-row md:items-center justify-between p-5 hover:bg-slate-900/60 transition-colors gap-4"
+                                                className={cn(
+                                                    "group flex flex-col md:flex-row md:items-center justify-between p-5 hover:bg-slate-900/60 transition-colors gap-4",
+                                                    isHired && "bg-emerald-950/20 border-l-4 border-emerald-500",
+                                                    isSelected && !isHired && "bg-blue-950/20"
+                                                )}
                                             >
-                                                {/* Left info with Rank Medal */}
+                                                {/* Left info with Select Checkbox & Rank Medal */}
                                                 <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                    {/* Select Checkbox */}
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={isHired}
+                                                        checked={isSelected}
+                                                        onChange={() => handleToggleSelect(candidate.applicationId || candidate.id)}
+                                                        className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-20 shrink-0"
+                                                    />
+
                                                     {/* Rank Badge */}
                                                     <div className={cn(
                                                         "h-12 w-12 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 shadow-md",
@@ -238,9 +453,15 @@ export default function CandidatesPage() {
                                                             <h3 className="font-bold text-lg text-slate-100 truncate group-hover:text-blue-400 transition-colors">
                                                                 {candidate.name}
                                                             </h3>
-                                                            <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1">
-                                                                <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Finished Interview
-                                                            </Badge>
+                                                            {isHired ? (
+                                                                <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1 shadow-sm">
+                                                                    <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Hired 🎉
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1">
+                                                                    <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Finished Interview
+                                                                </Badge>
+                                                            )}
                                                             <Badge variant="outline" className={cn("text-xs font-bold py-0.5 px-2.5 rounded-full", scoreColor)}>
                                                                 {candidate.recommendation || "Completed"}
                                                             </Badge>
@@ -255,8 +476,8 @@ export default function CandidatesPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* Center Scores */}
-                                                <div className="flex items-center gap-6 justify-between md:justify-end shrink-0">
+                                                {/* Center Scores & Action Buttons */}
+                                                <div className="flex items-center gap-5 justify-between md:justify-end shrink-0 flex-wrap">
                                                     <div className="flex items-center gap-4 text-right">
                                                         <div className="text-center">
                                                             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Technical</div>
@@ -274,14 +495,38 @@ export default function CandidatesPage() {
                                                         </div>
                                                     </div>
 
-                                                    <Button
-                                                        onClick={() => setSelectedCandidate(candidate)}
-                                                        size="sm"
-                                                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl px-4 h-9 shadow-lg shadow-blue-500/10 group-hover:scale-105 transition-all shrink-0"
-                                                    >
-                                                        <FileText className="h-3.5 w-3.5 mr-1.5" />
-                                                        View Report
-                                                    </Button>
+                                                    <div className="flex items-center gap-2">
+                                                        {isHired ? (
+                                                            <Button
+                                                                disabled
+                                                                size="sm"
+                                                                className="bg-emerald-900/40 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl px-3.5 h-9 cursor-default flex items-center gap-1"
+                                                            >
+                                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                                                                Hired
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                onClick={() => handleHireSingle(candidate)}
+                                                                disabled={hiringLoading}
+                                                                size="sm"
+                                                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl px-3.5 h-9 shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1 shrink-0"
+                                                            >
+                                                                <UserCheck className="h-3.5 w-3.5" />
+                                                                Hire
+                                                            </Button>
+                                                        )}
+
+                                                        <Button
+                                                            onClick={() => setSelectedCandidate(candidate)}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold rounded-xl px-3.5 h-9 shadow-sm shrink-0"
+                                                        >
+                                                            <FileText className="h-3.5 w-3.5 mr-1" />
+                                                            Report
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </motion.div>
                                         )
@@ -349,9 +594,15 @@ export default function CandidatesPage() {
                                     <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 font-bold">
                                         Rank #{selectedCandidate.rank}
                                     </Badge>
-                                    <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold flex items-center gap-1">
-                                        <CheckCircle2 className="h-3.5 w-3.5" /> Finished Interview
-                                    </Badge>
+                                    {selectedCandidate.isHired || selectedCandidate.status === 'Hired' ? (
+                                        <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
+                                            <CheckCircle2 className="h-3.5 w-3.5" /> Hired 🎉
+                                        </Badge>
+                                    ) : (
+                                        <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold flex items-center gap-1">
+                                            <CheckCircle2 className="h-3.5 w-3.5" /> Finished Interview
+                                        </Badge>
+                                    )}
                                     <CardTitle className="text-2xl font-bold">{selectedCandidate.name}</CardTitle>
                                 </div>
                                 <CardDescription className="text-slate-400 mt-1 flex flex-wrap items-center gap-3">
@@ -421,7 +672,22 @@ export default function CandidatesPage() {
                                 </div>
                             )}
 
-                            <div className="pt-2 flex justify-end">
+                            <div className="pt-3 flex items-center justify-between border-t border-slate-800">
+                                {selectedCandidate.isHired || selectedCandidate.status === 'Hired' ? (
+                                    <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold py-2 px-4 rounded-xl text-sm flex items-center gap-1.5">
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Candidate Hired 🎉
+                                    </Badge>
+                                ) : (
+                                    <Button
+                                        onClick={() => handleHireSingle(selectedCandidate)}
+                                        disabled={hiringLoading}
+                                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl px-5 h-10 shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                                    >
+                                        <UserCheck className="h-4 w-4" />
+                                        Hire This Candidate
+                                    </Button>
+                                )}
+
                                 <Button onClick={() => setSelectedCandidate(null)} className="font-bold bg-slate-800 hover:bg-slate-700 text-white rounded-xl">
                                     Close Details
                                 </Button>

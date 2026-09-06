@@ -103,6 +103,10 @@ export default function DeviceCheck({
   }, []);
 
   const handleStart = () => {
+    if (jobData?.already_completed) {
+      alert("You have already completed the AI interview for this job. Each candidate may only take the interview once per job.");
+      return;
+    }
     // Release preview stream so Agora RTC can cleanly claim hardware
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -125,6 +129,33 @@ export default function DeviceCheck({
 
   return (
     <div style={{ maxWidth: '960px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Already Completed Notice */}
+      {jobData?.already_completed && (
+        <div
+          style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: '14px',
+            padding: '18px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            color: '#f87171',
+            boxShadow: '0 4px 15px rgba(239, 68, 68, 0.1)',
+          }}
+        >
+          <AlertCircle size={28} color="#ef4444" style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#fca5a5' }}>
+              Interview Already Completed (Match Score: {jobData.completed_score || 0}%)
+            </div>
+            <div style={{ fontSize: '0.85rem', color: '#cbd5e1', marginTop: '3px' }}>
+              You have already taken the technical assessment for this job. Candidates are permitted to take the interview once per role. Please return to your dashboard to review open opportunities.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div
         className="card"
@@ -484,39 +515,62 @@ export default function DeviceCheck({
               </div>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleStart}
-              disabled={loadingStart || loadingSetup}
-              style={{
-                marginTop: '10px',
-                padding: '12px 20px',
-                fontSize: '1rem',
-                fontWeight: 700,
-                borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: '#ffffff',
-                border: 'none',
-                cursor: (loadingStart || loadingSetup) ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {loadingStart ? (
-                <>
-                  <RefreshCw size={16} className="spin-slow" />
-                  <span>Starting Interview...</span>
-                </>
-              ) : (
-                <>
-                  <Play size={16} fill="#ffffff" />
-                  <span>Begin Interview Now</span>
-                </>
-              )}
-            </button>
+            {jobData?.already_completed ? (
+              <a
+                href="http://localhost:3000/dashboard/jobs"
+                style={{
+                  marginTop: '10px',
+                  padding: '13px 20px',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)',
+                }}
+              >
+                <span>Return to Candidate Dashboard</span>
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleStart}
+                disabled={loadingStart || loadingSetup}
+                style={{
+                  marginTop: '10px',
+                  padding: '12px 20px',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: (loadingStart || loadingSetup) ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {loadingStart ? (
+                  <>
+                    <RefreshCw size={16} className="spin-slow" />
+                    <span>Starting Interview...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play size={16} fill="#ffffff" />
+                    <span>Begin Interview Now</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

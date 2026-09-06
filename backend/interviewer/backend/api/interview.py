@@ -212,6 +212,38 @@ def get_interview_setup_data(
 
     resume_text = _format_resume_text(resume_doc, candidate_name=candidate_name, candidate_email=c_email)
 
+    # Check if this candidate has already completed an interview for this job
+    if not app and (jobId or (job and job.get("_id"))) and (candidateId or candidateEmail):
+        target_jid = jobId or (str(job.get("_id")) if job else "")
+        crit = []
+        if candidateId:
+            crit.append({"applicantUid": candidateId})
+        if candidateEmail:
+            crit.append({"applicantEmail": candidateEmail})
+
+        job_crit = []
+        try:
+            job_crit.append({"jobId": ObjectId(target_jid)})
+        except Exception:
+            pass
+        job_crit.append({"jobId": target_jid})
+
+        try:
+            app = mongo.applications.find_one({"$and": [{"$or": crit}, {"$or": job_crit}]})
+        except Exception:
+            pass
+
+    already_completed = False
+    completed_score = 0
+    if app:
+        app_status = app.get("status")
+        if app_status in ["Completed", "Hired"] or bool(app.get("interviewCompletedAt")) or (app.get("report") is not None and app.get("matchScore")):
+            already_completed = True
+            completed_score = app.get("matchScore") if app.get("matchScore") is not None else app.get("score", 0)
+
+    job_data["already_completed"] = already_completed
+    job_data["completed_score"] = completed_score
+
     return {
         "success": True,
         "jobData": job_data,
@@ -224,6 +256,8 @@ def get_interview_setup_data(
         "jobId": str(job.get("_id", jobId or "")),
         "applicationId": applicationId or (str(app.get("_id")) if app else ""),
         "candidateId": candidateId or "",
+        "already_completed": already_completed,
+        "completed_score": completed_score,
     }
 
 
@@ -238,6 +272,35 @@ def create_and_start_interview(request: CreateInterviewRequest) -> Dict[str, Any
     Create a new interview, analyze the candidate's resume, generate the AI panel,
     set up Agora credentials, and formulate the opening question.
     """
+    # Reject if candidate has already taken the interview for this job
+    if request.job_id and (request.candidate_id or request.candidate_email):
+        try:
+            from tools.database import mongo
+            from bson import ObjectId
+            crit = []
+            if request.candidate_id:
+                crit.append({"applicantUid": request.candidate_id})
+            if request.candidate_email:
+                crit.append({"applicantEmail": request.candidate_email})
+
+            job_crit = []
+            try:
+                job_crit.append({"jobId": ObjectId(request.job_id)})
+            except Exception:
+                pass
+            job_crit.append({"jobId": request.job_id})
+
+            prior_app = mongo.applications.find_one({"$and": [{"$or": crit}, {"$or": job_crit}]})
+            if prior_app and (prior_app.get("status") in ["Completed", "Hired"] or bool(prior_app.get("interviewCompletedAt")) or (prior_app.get("report") is not None and prior_app.get("matchScore"))):
+                raise HTTPException(
+                    status_code=403,
+                    detail="You have already completed the AI interview for this job. Candidates are permitted to take the interview once per job listing."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Prior completion check notice: {e}")
+
     company_dict = request.company_details.model_dump()
     return _handle_call(
         controller.start,
