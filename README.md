@@ -224,6 +224,8 @@ A critical architectural distinction in our system is the coordinated use of **b
 
 ### Multi-Tier External LLM Hierarchy: Groq and Google AI Studio
 
+![Otheragent Dynamic LLM Routing and Token Architecture](docs/otheragent_working.jpg)
+
 To power our external reasoning brain robustly, our portal integrates two complementary LLM providers: **Groq** and **Google AI Studio (Gemini)**.
 
 #### Why Dual Providers?
