@@ -1,0 +1,35 @@
+[
+  {
+    "id": "sub_1770374394169_22zi36b89",
+    "problemId": "gen_mvmhy3tqz",
+    "userId": "default-user",
+    "code": "from typing import List\n\ndef twoSum(nums: List[int], target: int) -> List[int]:\n    mp = {}  # 🔑 value -> index mapping\n\n    for i, x in enumerate(nums):\n        need = target - x   # ➖ required number\n\n        # ✅ If required number already seen, return indices\n        if need in mp:\n            return [mp[need], i]\n\n        # ➕ Store current number with its index\n        mp[x] = i\n\n    return []  # (Won't reach here as one solution always exists)\n",
+    "language": "python",
+    "status": "Accepted",
+    "runtime": 117,
+    "testsPassed": 2,
+    "testsTotal": 2,
+    "timestamp": "2026-02-06T10:39:54.169Z"
+  },
+  {
+    "id": "sub_1770380195318_p7fyiwfz9",
+    "problemId": "gen_odr7pn1qb",
+    "userId": "default-user",
+    "answer": "We scale ingestion using global edge load balancing with stateless receivers backed by durable queues for buffering and backpressure. Storage uses a hot TSDB + cold object store pattern, with consistent hashing over composite shard keys (metric + time bucket) and virtual shards to enable zero-downtime horizontal scaling as QPS grows annually.”",
+    "evaluation": {
+      "rating": 8,
+      "feedback": "The answer provides an extremely strong high-level architectural summary, correctly identifying the key advanced components necessary for handling 10M QPS (stateless receivers, durable queues, Hot TSDB + Cold Object Store, Consistent Hashing, Virtual Shards). This demonstrates excellent technical understanding. However, the answer is too brief. It functions as an excellent executive summary but fails to provide the detailed explanations, trade-offs, and elaboration required in a complex system design prompt. Specifically, it doesn't detail *how* backpressure is applied or explain the explicit trade-offs of the composite sharding key (query efficiency vs. write distribution), which were core requirements of Part 2.",
+      "suggestions": [
+        "For Part 1 (Ingestion), expand the explanation. Detail the role of the durable queue (e.g., Kafka or Pulsar) in decoupling the receiving layer from storage, stabilizing throughput, and acting as the primary buffer. Specify how backpressure would be handled (e.g., rate limiting at the edge, circuit breakers, or signaling congestion back to the clients via the queue's internal mechanisms).",
+        "For Part 2 (Storage), explicitly name the storage technology chosen (e.g., specific Time-Series Database like M3DB or specialized optimized NoSQL like Cassandra for raw writes).",
+        "Crucially, elaborate on the sharding key trade-offs. The chosen composite key (metric ID + time bucket) is excellent, but you must explain the pros: Write Distribution (time bucket helps spread load chronologically and facilitates TTL management) and Query Efficiency (Metric ID ensures fast lookups for dashboard queries focused on single metrics). Also, discuss the con: Potential for temporary hot spots if a massive incident causes a specific time bucket to receive extreme, uneven load.",
+        "Briefly explain the mechanism of Consistent Hashing combined with Virtual Shards: Consistent Hashing minimizes data movement during scaling, and Virtual Shards ensure better load distribution across heterogeneous physical servers, enabling the requested zero-downtime horizontal scaling."
+      ]
+    },
+    "status": "Accepted",
+    "runtime": 0,
+    "testsPassed": 1,
+    "testsTotal": 1,
+    "timestamp": "2026-02-06T12:16:35.318Z"
+  }
+]
