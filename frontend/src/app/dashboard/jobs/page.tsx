@@ -20,7 +20,17 @@ export default function JobsPage() {
         try {
             const res = await fetch("/api/jobs")
             const data = await res.json()
-            const enrichedData = data.map((job: any, i: number) => {
+            if (!Array.isArray(data)) return
+
+            const seenIds = new Set<string>()
+            const uniqueJobs = data.filter((job: any) => {
+                const id = String(job.id || job._id || "")
+                if (!id || seenIds.has(id)) return false
+                seenIds.add(id)
+                return true
+            })
+
+            const enrichedData = uniqueJobs.map((job: any, i: number) => {
                 const skills = Array.isArray(job.skillsRequired)
                     ? job.skillsRequired
                     : typeof job.skillsRequired === "string"
@@ -29,6 +39,7 @@ export default function JobsPage() {
 
                 return {
                     ...job,
+                    id: String(job.id || job._id),
                     title: job.roleRequired || job.title,
                     company: job.company || "Company",
                     logo: job.logo || (job.company || "M").substring(0, 2).toUpperCase(),
@@ -168,14 +179,14 @@ export default function JobsPage() {
                         (job.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                         (job.company || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                         (job.tags && job.tags.some((t: string) => t.toLowerCase().includes(searchQuery.toLowerCase())))
-                    ).map((job) => {
+                    ).map((job, idx) => {
                         const application = appliedMap[job.id]
                         const isApplied = Boolean(application)
                         const isCompleted = application?.status === "Completed" || (application?.matchScore && application.matchScore > 0)
                         const isCurrentApplying = applyingJobId === job.id
 
                         return (
-                            <Card key={job.id} className="group overflow-hidden border-slate-200 dark:border-slate-800 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
+                            <Card key={`${job.id || job._id || 'job'}-${idx}`} className="group overflow-hidden border-slate-200 dark:border-slate-800 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
                                 <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4">
                                     <div className="flex items-center gap-4">
                                         <div className={`h-14 w-14 rounded-2xl ${job.color} flex items-center justify-center text-white font-bold text-xl shadow-inner group-hover:scale-110 transition-transform duration-300`}>
@@ -230,8 +241,8 @@ export default function JobsPage() {
                                     <div className="h-px bg-slate-100 dark:bg-slate-800 mb-4" />
                                     <div className="space-y-4">
                                         <div className="flex flex-wrap gap-2">
-                                            {job.tags && job.tags.map((tag: string) => (
-                                                <Badge key={tag} variant="outline" className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-normal">
+                                            {job.tags && job.tags.map((tag: string, tIdx: number) => (
+                                                <Badge key={`${tag}-${tIdx}`} variant="outline" className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-normal">
                                                     {tag}
                                                 </Badge>
                                             ))}

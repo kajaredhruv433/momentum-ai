@@ -35,7 +35,17 @@ async def list_jobs(recruiterUid: Optional[str] = Query(None)):
 
     cursor = db.jobs.find(query).sort("postedAt", -1)
     jobs = await cursor.to_list(length=500)
-    return serialize_docs(jobs)
+    serialized = serialize_docs(jobs)
+
+    seen_ids = set()
+    deduped = []
+    for j in serialized:
+        jid = str(j.get("id") or j.get("_id") or "")
+        if jid and jid not in seen_ids and (j.get("title") or j.get("roleRequired")):
+            seen_ids.add(jid)
+            deduped.append(j)
+
+    return deduped
 
 @router.post("", status_code=201)
 async def create_job(req: CreateJobRequest):
