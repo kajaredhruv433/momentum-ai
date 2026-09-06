@@ -79,6 +79,8 @@ async def get_user_applications(user_id: str):
     db = get_db()
     query = {"$or": [{"applicantUid": user_id}, {"applicantEmail": {"$regex": f"^{user_id}$", "$options": "i"}}]}
     apps = await db.applications.find(query).sort("appliedAt", -1).to_list(length=200)
+    for a in apps:
+        a.pop("report", None)
     return serialize_docs(apps)
 
 @router.post("/{app_id}/report")

@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Briefcase, MapPin, DollarSign, Building2, Search, Filter, CheckCircle2, Loader2, FileText, Download, Play, Radio, Sparkles } from "lucide-react"
+import { Briefcase, MapPin, DollarSign, Building2, Search, Filter, CheckCircle2, XCircle, Loader2, FileText, Download, Play, Radio, Sparkles } from "lucide-react"
 
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
@@ -183,7 +183,8 @@ export default function JobsPage() {
                     ).map((job, idx) => {
                         const application = appliedMap[job.id]
                         const isApplied = Boolean(application)
-                        const isCompleted = application?.status === "Completed" || (application?.matchScore && application.matchScore > 0)
+                        const isCompleted = application?.status === "Completed" || application?.status === "Hired" || (application?.matchScore && application.matchScore > 0)
+                        const isHired = application?.status === "Hired" || application?.isHired === true
                         const isCurrentApplying = applyingJobId === job.id
 
                         return (
@@ -210,21 +211,17 @@ export default function JobsPage() {
                                         {isApplied ? (
                                             <div className="flex items-center gap-2">
                                                 {isCompleted ? (
-                                                    <>
-                                                        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 py-2 px-3.5 rounded-full flex gap-1.5 font-bold shadow-sm">
+                                                    isHired ? (
+                                                        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 py-2 px-4 rounded-full flex items-center gap-1.5 font-bold shadow-sm text-sm">
                                                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                                            Interview Completed ({application?.matchScore || application?.score || 0}%)
+                                                            Hired 🎉
                                                         </Badge>
-                                                        <Link href="/dashboard/interviews">
-                                                            <Button
-                                                                variant="outline"
-                                                                className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold rounded-full px-5 py-2 transition-all flex items-center gap-1.5"
-                                                            >
-                                                                <FileText className="h-4 w-4" />
-                                                                View Report
-                                                            </Button>
-                                                        </Link>
-                                                    </>
+                                                    ) : (
+                                                        <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 py-2 px-4 rounded-full flex items-center gap-1.5 font-bold shadow-sm text-sm">
+                                                            <XCircle className="h-4 w-4 text-slate-500" />
+                                                            Not Hired
+                                                        </Badge>
+                                                    )
                                                 ) : (
                                                     <>
                                                         <Badge className="bg-blue-500/15 text-blue-500 border border-blue-500/20 py-2 px-3 rounded-full flex gap-1.5 font-semibold">

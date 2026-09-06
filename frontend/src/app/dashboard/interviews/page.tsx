@@ -13,6 +13,7 @@ import {
     ArrowRight,
     PlayCircle,
     CheckCircle2,
+    XCircle,
     Briefcase,
     Building2,
     MapPin,
@@ -68,9 +69,8 @@ interface CompletedInterviewItem {
     technical_score: number;
     communication_score: number;
     problem_solving_score: number;
-    recommendation: string;
-    feedback: string;
-    report?: any;
+    status: string;
+    isHired?: boolean;
 }
 
 export default function CandidateInterviewsPage() {
@@ -79,7 +79,6 @@ export default function CandidateInterviewsPage() {
     const [totalApplied, setTotalApplied] = useState(0)
     const [loading, setLoading] = useState(true)
     const [user, setUser] = useState<User | null>(null)
-    const [selectedReport, setSelectedReport] = useState<CompletedInterviewItem | null>(null)
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -285,142 +284,88 @@ export default function CandidateInterviewsPage() {
                 )}
             </motion.div>
 
-            {/* Completed Job Interviews & Reports */}
+            {/* Completed Job Interviews & Hiring Status */}
             {completed.length > 0 && (
                 <motion.div variants={item} className="space-y-4 pt-4 border-t">
                     <div>
-                        <h2 className="text-2xl font-bold tracking-tight">Completed Interview Reports</h2>
+                        <h2 className="text-2xl font-bold tracking-tight">Completed Interviews & Hiring Status</h2>
                         <p className="text-muted-foreground text-sm">
-                            Results and match scores from your completed interviews.
+                            Evaluation metrics and recruiter hiring decisions for your completed rounds.
                         </p>
                     </div>
 
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {completed.map((item) => (
-                            <Card
-                                key={item.sessionId}
-                                className="h-full hover:border-primary/50 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-                                onClick={() => setSelectedReport(item)}
-                            >
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-start justify-between mb-2">
-                                        <Badge variant="outline" className="capitalize font-bold border-emerald-500/30 text-emerald-400">
-                                            {item.recommendation || "Completed"}
-                                        </Badge>
-                                        <div className="flex items-center text-xs text-muted-foreground">
-                                            <Clock className="mr-1 h-3 w-3" />
-                                            {new Date(item.date).toLocaleDateString()}
+                        {completed.map((item) => {
+                            const isHired = item.isHired || item.status === "Hired"
+
+                            return (
+                                <Card
+                                    key={item.sessionId}
+                                    className={`h-full transition-all duration-300 ${isHired ? "border-emerald-500/40 bg-emerald-500/[0.03] shadow-lg shadow-emerald-500/5" : "border-slate-800"}`}
+                                >
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-start justify-between mb-2">
+                                            {isHired ? (
+                                                <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold flex items-center gap-1.5 py-1 px-3">
+                                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Hired 🎉
+                                                </Badge>
+                                            ) : (
+                                                <Badge className="bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-500/30 font-bold flex items-center gap-1.5 py-1 px-3">
+                                                    <XCircle className="h-3.5 w-3.5 text-slate-500" /> Not Hired
+                                                </Badge>
+                                            )}
+                                            <div className="flex items-center text-xs text-muted-foreground">
+                                                <Clock className="mr-1 h-3 w-3" />
+                                                {new Date(item.date).toLocaleDateString()}
+                                            </div>
                                         </div>
-                                    </div>
-                                    <CardTitle className="text-lg font-bold line-clamp-1 group-hover:text-primary transition-colors">
-                                        {item.topic}
-                                    </CardTitle>
-                                    <CardDescription>{item.company}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-end justify-between">
-                                        <span className="text-xs font-semibold text-muted-foreground uppercase">
-                                            Role Match Score
-                                        </span>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-3xl font-black text-emerald-500">
-                                                {item.matchScore || item.score}%
+                                        <CardTitle className="text-lg font-bold line-clamp-1">
+                                            {item.topic}
+                                        </CardTitle>
+                                        <CardDescription>{item.company}</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="flex items-end justify-between">
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase">
+                                                Role Match Score
                                             </span>
+                                            <div className="flex items-baseline gap-1">
+                                                <span className={`text-3xl font-black ${isHired ? "text-emerald-500" : "text-slate-300"}`}>
+                                                    {item.matchScore || item.score}%
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-2 text-center text-xs">
-                                        <div>
-                                            <div className="text-[10px] text-muted-foreground font-medium">Technical</div>
-                                            <div className="font-bold text-sm text-foreground">{item.technical_score || 0}%</div>
+                                        <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-2 text-center text-xs">
+                                            <div>
+                                                <div className="text-[10px] text-muted-foreground font-medium">Technical</div>
+                                                <div className="font-bold text-sm text-foreground">{item.technical_score || 0}%</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] text-muted-foreground font-medium">Communication</div>
+                                                <div className="font-bold text-sm text-foreground">{item.communication_score || 0}%</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div className="text-[10px] text-muted-foreground font-medium">Communication</div>
-                                            <div className="font-bold text-sm text-foreground">{item.communication_score || 0}%</div>
+
+                                        <div className="pt-1">
+                                            {isHired ? (
+                                                <div className="w-full py-2.5 px-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center justify-center gap-2">
+                                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                    Recruiter Decision: Hired 🎉
+                                                </div>
+                                            ) : (
+                                                <div className="w-full py-2.5 px-3.5 rounded-xl bg-slate-500/10 border border-slate-500/20 text-slate-600 dark:text-slate-400 text-xs font-bold flex items-center justify-center gap-2">
+                                                    <XCircle className="h-4 w-4 text-slate-500" />
+                                                    Recruiter Decision: Not Hired
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-
-                                    <p className="text-xs text-muted-foreground line-clamp-2 italic">
-                                        "{item.feedback}"
-                                    </p>
-
-                                    <Button variant="outline" size="sm" className="w-full text-xs font-bold">
-                                        View Full Report <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        ))}
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
                     </div>
                 </motion.div>
-            )}
-
-            {/* Report Modal */}
-            {selectedReport && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={() => setSelectedReport(null)} />
-                    <Card className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl border-primary/20 bg-background">
-                        <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
-                            <div>
-                                <CardTitle className="text-2xl font-bold">{selectedReport.topic}</CardTitle>
-                                <CardDescription>{selectedReport.company} • Completed Assessment</CardDescription>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => setSelectedReport(null)}>
-                                <X className="h-5 w-5" />
-                            </Button>
-                        </CardHeader>
-                        <CardContent className="space-y-6 pt-6">
-                            <div className="grid grid-cols-3 gap-4 text-center">
-                                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                                    <div className="text-xs text-emerald-400 font-bold uppercase tracking-wider">Role Match</div>
-                                    <div className="text-3xl font-extrabold text-emerald-500 mt-1">{selectedReport.matchScore || selectedReport.score}%</div>
-                                </div>
-                                <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
-                                    <div className="text-xs text-blue-400 font-bold uppercase tracking-wider">Technical</div>
-                                    <div className="text-3xl font-extrabold text-blue-500 mt-1">{selectedReport.technical_score || 0}%</div>
-                                </div>
-                                <div className="rounded-xl border border-purple-500/20 bg-purple-500/10 p-4">
-                                    <div className="text-xs text-purple-400 font-bold uppercase tracking-wider">Communication</div>
-                                    <div className="text-3xl font-extrabold text-purple-500 mt-1">{selectedReport.communication_score || 0}%</div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Final Recommendation</h4>
-                                <div className="rounded-xl bg-muted/40 p-4 text-sm font-semibold">
-                                    {selectedReport.recommendation || selectedReport.feedback}
-                                </div>
-                            </div>
-
-                            {selectedReport.report?.strengths && (
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-bold uppercase tracking-wider text-emerald-400">Key Strengths</h4>
-                                    <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                                        {(Array.isArray(selectedReport.report.strengths) ? selectedReport.report.strengths : [selectedReport.report.strengths]).map((s: string, i: number) => (
-                                            <li key={i}>{s}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-
-                            {selectedReport.report?.areas_for_improvement && (
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-bold uppercase tracking-wider text-amber-400">Areas for Improvement</h4>
-                                    <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-                                        {(Array.isArray(selectedReport.report.areas_for_improvement) ? selectedReport.report.areas_for_improvement : [selectedReport.report.areas_for_improvement]).map((a: string, i: number) => (
-                                            <li key={i}>{a}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-
-                            <div className="pt-2 flex justify-end">
-                                <Button onClick={() => setSelectedReport(null)} className="font-bold">
-                                    Close Report
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
             )}
         </motion.div>
     )

@@ -32,7 +32,8 @@ async def get_candidate_interviews(
         if app.get("jobId"):
             job = await db.jobs.find_one({"_id": app["jobId"]})
 
-        is_completed = app.get("status") == "Completed" or app.get("report") is not None
+        is_hired = app.get("status") == "Hired" or app.get("isHired") is True
+        is_completed = app.get("status") in ["Completed", "Hired"] or app.get("report") is not None
 
         if is_completed:
             rep = app.get("report") or {}
@@ -48,9 +49,8 @@ async def get_candidate_interviews(
                 "technical_score": rep.get("technical_score", 0),
                 "communication_score": rep.get("communication_score", 0),
                 "problem_solving_score": rep.get("problem_solving_score", 0),
-                "recommendation": rep.get("final_recommendation", "Consider"),
-                "feedback": rep.get("final_recommendation") or "Interview completed.",
-                "report": rep
+                "status": "Hired" if is_hired else "Not Hired",
+                "isHired": is_hired
             })
         else:
             # Active queue - ready to Give Interview

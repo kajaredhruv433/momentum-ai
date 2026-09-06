@@ -85,22 +85,20 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Hiring Recommendation
+            Session Status
           </span>
           <div
             style={{
-              padding: '8px 22px',
+              padding: '8px 20px',
               borderRadius: '9999px',
-              background: recBadge.bg,
-              color: recBadge.color,
-              border: `1.5px solid ${recBadge.border}`,
-              fontSize: '1.15rem',
-              fontWeight: 800,
-              letterSpacing: '0.02em',
-              boxShadow: `0 0 16px ${recBadge.bg}`,
+              background: 'rgba(59, 130, 246, 0.15)',
+              color: '#60a5fa',
+              border: '1.5px solid rgba(59, 130, 246, 0.3)',
+              fontSize: '0.95rem',
+              fontWeight: 700,
             }}
           >
-            {rec}
+            Interview Completed
           </div>
         </div>
       </div>
@@ -308,17 +306,13 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
             <a
-              href="http://localhost:3000/dashboard/interviews"
-              className="btn btn-secondary"
-              style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+              href="http://localhost:3000/dashboard/jobs"
+              className="btn btn-primary"
+              style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', fontWeight: 700 }}
             >
               <Briefcase size={16} />
               <span>Back to Candidate Dashboard</span>
             </a>
-            <button type="button" className="btn btn-primary" onClick={onReset} style={{ padding: '10px 18px' }}>
-              <RotateCcw size={16} />
-              <span>Retake Interview</span>
-            </button>
           </div>
         </div>
       </div>

@@ -503,7 +503,7 @@ export default function CandidatesPage() {
                                                                 className="bg-emerald-900/40 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl px-3.5 h-9 cursor-default flex items-center gap-1"
                                                             >
                                                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                                                                Hired
+                                                                Hired 🎉
                                                             </Button>
                                                         ) : (
                                                             <Button
