@@ -29,7 +29,6 @@
    - [Running the Platform](#running-the-platform)
    - [Automated Verification Suite](#automated-verification-suite)
    - [System Access Points](#system-access-points)
-7. [License](#7-license)
 
 ---
 
@@ -537,8 +536,3 @@ ALL VERIFICATIONS PASSED SUCCESSFULLY!
 | **Recruiter Leaderboard** | `http://localhost:3000/recruiter/dashboard/candidates` | Candidates ranked by interview match score with reports |
 | **AI Interviewer Lobby** | `http://127.0.0.1:8000/interview-app` | Pre-flight hardware check and live interview room |
 | **FastAPI Swagger Docs** | `http://127.0.0.1:8000/docs` | Interactive API documentation |
-
----
-
-## 7. License
-MIT License. Built for the RunTimeError Momentum AI Platform.
