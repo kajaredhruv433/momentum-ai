@@ -32,7 +32,7 @@ load_dotenv()
 GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_TPM_LIMIT = int(os.getenv("GROQ_TPM_LIMIT", "8000"))
 GROQ_TOKEN_SAFETY_MARGIN = float(os.getenv("GROQ_TOKEN_SAFETY_MARGIN", "0.90"))
-GROQ_MAX_OUTPUT_TOKENS = int(os.getenv("GROQ_MAX_OUTPUT_TOKENS", "1000"))
+GROQ_MAX_OUTPUT_TOKENS = int(os.getenv("GROQ_MAX_OUTPUT_TOKENS", "2000"))
 GROQ_MAX_WAIT_SECONDS = int(os.getenv("GROQ_MAX_WAIT_SECONDS", "90"))
 
 # These are intentionally small so one bad key is moved out of rotation.

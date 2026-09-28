@@ -14,7 +14,7 @@ EchoSphere is an AI-powered interview platform with a dynamic panel of interview
 
 - Python 3.11 or newer
 - Node.js 18 or newer and npm
-- Credentials for the services used by your configuration: Groq, Agora, MongoDB, and Qdrant
+- Credentials for the services used by your configuration: Groq, ElevenLabs, MongoDB, and Qdrant
 
 ## Setup
 

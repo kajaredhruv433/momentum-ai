@@ -40,17 +40,10 @@ class CreateInterviewRequest(BaseModel):
 class CandidateAnswerRequest(BaseModel):
     answer: str = Field(..., min_length=1, description="Transcript of spoken answer or typed text")
     input_method: Literal["voice", "text"] = Field(
-        "text", description="Input method used: 'voice' (Agora STT) or 'text' (Typing)"
+        "text", description="Input method used: 'voice' (ElevenLabs STT) or 'text' (Typing)"
     )
     question_id: Optional[str] = Field(None, description="Optional ID of the question being answered")
 
-
-class AgoraEventRequest(BaseModel):
-    event: str = Field(
-        ...,
-        description="Event name: connected, speech_started, transcript_partial, transcript_final, speech_finished, question_started, question_finished, error",
-    )
-    data: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Event payload metadata")
 
 
 class EvaluationReportSchema(BaseModel):
@@ -102,4 +95,3 @@ class InterviewPublicState(BaseModel):
     report_ready: bool = False
     report: Optional[Dict[str, Any]] = None
     history: List[Dict[str, Any]] = Field(default_factory=list)
-    agora: Optional[Dict[str, Any]] = None

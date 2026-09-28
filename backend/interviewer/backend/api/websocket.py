@@ -6,8 +6,8 @@ Requirement 45:
 Dispatches all canonical interview events:
 - interview_created
 - interview_started
-- agora_connecting
-- agora_connected
+- ElevenLabs_connecting
+- ElevenLabs_connected
 - microphone_permission_required
 - microphone_connected
 - microphone_unavailable
@@ -39,6 +39,10 @@ import json
 import logging
 from typing import Dict, List, Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+try:
+    from ..services.elevenlabs.stt import relay_realtime_stt
+except ImportError:
+    from services.elevenlabs.stt import relay_realtime_stt
 
 logger = logging.getLogger(__name__)
 
@@ -138,3 +142,19 @@ async def websocket_events_endpoint(websocket: WebSocket, interview_id: str):
     except Exception as exc:
         logger.warning("WebSocket error for interview %s: %s", interview_id, exc)
         manager.disconnect(interview_id, websocket)
+
+
+@router.websocket("/api/interviews/{interview_id}/stt")
+async def elevenlabs_stt_endpoint(websocket: WebSocket, interview_id: str):
+    """Authenticated server-side ElevenLabs STT relay for one interview microphone."""
+    await websocket.accept()
+    try:
+        await relay_realtime_stt(websocket)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning("ElevenLabs STT relay error for %s: %s", interview_id, exc)
+        try:
+            await websocket.send_json({"type": "error", "message": "Speech recognition disconnected"})
+        except Exception:
+            pass

@@ -8,8 +8,7 @@ Requirement 46:
 - POST /api/interviews/{interview_id}/start
 - POST /api/interviews/{interview_id}/answer
 - GET  /api/interviews/{interview_id}/report
-- POST /api/interviews/{interview_id}/agora/token
-- POST /api/interviews/{interview_id}/agora/event
+- POST /api/interviews/{interview_id}/speech-finished
 """
 from __future__ import annotations
 
@@ -19,11 +18,13 @@ from fastapi import APIRouter, HTTPException, Response
 
 try:
     from ..interview_controller import InterviewController
-    from ..schemas import AgoraEventRequest, CandidateAnswerRequest, CanvasSubmitRequest, CreateInterviewRequest
+    from ..schemas import CandidateAnswerRequest, CanvasSubmitRequest, CreateInterviewRequest
+    from ..services.elevenlabs.tts import ElevenLabsTTS
     from .websocket import manager
 except ImportError:
     from interview_controller import InterviewController
-    from schemas import AgoraEventRequest, CandidateAnswerRequest, CanvasSubmitRequest, CreateInterviewRequest
+    from schemas import CandidateAnswerRequest, CanvasSubmitRequest, CreateInterviewRequest
+    from services.elevenlabs.tts import ElevenLabsTTS
     from api.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/api", tags=["interviews"])
 # Instantiate controller and wire WebSocket broadcasting
 controller = InterviewController()
 controller.subscribe(manager.sync_broadcast)
+tts = ElevenLabsTTS()
 
 
 def _handle_call(fn, *args, **kwargs):
@@ -270,7 +272,7 @@ def get_interview_setup_data(
 def create_and_start_interview(request: CreateInterviewRequest) -> Dict[str, Any]:
     """
     Create a new interview, analyze the candidate's resume, generate the AI panel,
-    set up Agora credentials, and formulate the opening question.
+    assign ElevenLabs voices, and formulate the opening question.
     """
     # Reject if candidate has already taken the interview for this job
     if request.job_id and (request.candidate_id or request.candidate_email):
@@ -351,9 +353,7 @@ async def get_interview_tts(
         except Exception:
             pass
 
-    audio_bytes = await controller.agora.synthesize_audio(
-        text, panel_member=speaker, gender=gender, member_details=member_details
-    )
+    audio_bytes = await tts.synthesize(text, member_details=member_details)
     if not audio_bytes:
         logger.warning("TTS audio synthesis returned empty audio for speaker %s; responding with 204", speaker)
         return Response(content=b"", media_type="audio/mpeg", status_code=204)
@@ -419,45 +419,19 @@ def get_report(interview_id: str) -> Dict[str, Any]:
 
 
 # ============================================================================
-# AGORA SPECIFIC ENDPOINTS
+# SPEECH LIFECYCLE ENDPOINTS
 # ============================================================================
 
-@router.post("/interviews/{interview_id}/agora/token")
-@router.post("/interview/{interview_id}/voice/start")  # Compatibility alias
-def get_agora_token(interview_id: str) -> Dict[str, Any]:
-    """
-    Generate or retrieve Agora RTC token and channel info for candidate microphone connection.
-    Does NOT expose private server secrets.
-    """
-    state = _handle_call(controller.status, interview_id)
-    agora_info = state.get("agora") or {}
-    if not agora_info.get("token"):
-        # Re-connect or refresh
-        agora_info = controller.agora.connect(interview_id, panel=state.get("panel"))
-    return agora_info
+@router.post("/interviews/{interview_id}/question-started")
+def question_started(interview_id: str) -> Dict[str, Any]:
+    """Start the timer after the ElevenLabs question audio begins playing."""
+    return _handle_call(controller.on_question_started, interview_id, True)
 
 
-@router.post("/interviews/{interview_id}/agora/event")
-@router.post("/interview/{interview_id}/question-started")  # Compatibility alias
-def post_agora_event(interview_id: str, request: Optional[AgoraEventRequest] = None) -> Dict[str, Any]:
-    """
-    Dispatch client-side Agora audio events (e.g. question_started to initiate timer,
-    speech_finished to initiate report generation).
-    """
-    event_name = (request.event if request else "question_started").lower()
-    data = (request.data if request else {}) or {}
-
-    if event_name in {"question_started", "speech_started"}:
-        return _handle_call(controller.on_question_started, interview_id, True)
-
-    elif event_name in {"speech_finished", "closing_finished", "conclusion_finished"}:
-        return _handle_call(controller.on_closing_speech_finished, interview_id)
-
-    return {"success": True, "event": event_name}
-
-
-@router.post("/interview/{interview_id}/conclusion-finished")  # Compatibility alias
-def post_conclusion_finished(interview_id: str) -> Dict[str, Any]:
+@router.post("/interviews/{interview_id}/speech-finished")
+@router.post("/interview/{interview_id}/conclusion-finished")
+def speech_finished(interview_id: str) -> Dict[str, Any]:
+    """Generate the report only after the closing ElevenLabs audio has completed."""
     return _handle_call(controller.on_closing_speech_finished, interview_id)
 
 

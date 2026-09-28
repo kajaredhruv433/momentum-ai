@@ -107,7 +107,7 @@ export default function DeviceCheck({
       alert("You have already completed the AI interview for this job. Each candidate may only take the interview once per job.");
       return;
     }
-    // Release preview stream so Agora RTC can cleanly claim hardware
+    // Release preview stream so ElevenLabs RTC can cleanly claim hardware
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;

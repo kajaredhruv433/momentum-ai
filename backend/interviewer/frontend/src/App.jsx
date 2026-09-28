@@ -5,7 +5,7 @@ import InterviewRoom from './components/InterviewRoom';
 import Report from './components/Report';
 import { api } from './services/api';
 import { InterviewWebSocket } from './services/websocket';
-import { AgoraClientService } from './services/agora';
+import { ElevenLabsVoiceService } from './services/voice';
 
 const DEFAULT_JOB = {
   company_name: 'TechNova Solutions',
@@ -106,7 +106,7 @@ export default function App() {
   const [silenceSeconds, setSilenceSeconds] = useState(0);
 
   const wsRef = useRef(null);
-  const agoraRef = useRef(null);
+  const voiceRef = useRef(null);
   const liveTranscriptRef = useRef('');
   liveTranscriptRef.current = liveTranscript;
   const isRecordingRef = useRef(false);
@@ -118,10 +118,10 @@ export default function App() {
   const lastCandidateSpeechTimeRef = useRef(Date.now());
   const handleSubmitAnswerRef = useRef(null);
 
-  // Initialize Agora Service instance
+  // Initialize ElevenLabs Service instance
   useEffect(() => {
-    const service = new AgoraClientService();
-    agoraRef.current = service;
+    const service = new ElevenLabsVoiceService();
+    voiceRef.current = service;
 
     service.onSpeakingStateCallback = ({ speaking }) => {
       setInterviewState((prev) => (prev ? { ...prev, isSpeaking: speaking } : prev));
@@ -166,10 +166,10 @@ export default function App() {
       setPauseCountdown(info);
     };
 
-    service.onSilenceTimeoutCallback = (transcriptFromAgora) => {
+    service.onSilenceTimeoutCallback = (transcriptFromElevenLabs) => {
       lastCandidateSpeechTimeRef.current = Date.now();
       setSilenceSeconds(0);
-      const text = (transcriptFromAgora || liveTranscriptRef.current || '').trim();
+      const text = (transcriptFromElevenLabs || liveTranscriptRef.current || '').trim();
       console.info('[App] onSilenceTimeoutCallback triggered with candidate speech:', text);
       if (text && !loadingAnswerRef.current) {
         console.info('[App] Natural pause detected after speech. Auto-submitting response:', text);
@@ -194,13 +194,13 @@ export default function App() {
     const voiceGender = gender || interviewState?.panel_member_details?.gender || 'Female';
     if (!textToSpeak) return;
 
-    agoraRef.current?.speakPersonaMessage(
+    voiceRef.current?.speakPersonaMessage(
       textToSpeak,
       speaker,
       voiceGender,
       () => {
         if (!interviewState?.timer_started && interviewState?.interview_id) {
-          api.notifyAgoraEvent(interviewState.interview_id, 'question_started', { first_question: true }).catch(() => {});
+          api.questionStarted(interviewState.interview_id).catch(() => {});
         }
       },
       true, // Allow intentional question replay
@@ -229,7 +229,7 @@ export default function App() {
   // Start Interview Flow
   const handleStartInterview = async () => {
     // Prime browser audio context immediately during user click gesture
-    agoraRef.current?.unlockAudio();
+    voiceRef.current?.unlockAudio();
 
     setLoadingStart(true);
     setErrorMsg(null);
@@ -248,19 +248,20 @@ export default function App() {
         urlParams.applicationId
       );
       const interviewId = response.interview_id;
+      voiceRef.current.interviewId = interviewId;
       setInterviewState(response);
       setScreen('INTERVIEW');
 
       // 2. 🔥 SPEAK IMMEDIATELY AS SOON AS QUESTION IS GENERATED!
       if (response.current_question && response.selected_panel_member) {
-        agoraRef.current?.speakPersonaMessage(
+        voiceRef.current?.speakPersonaMessage(
           response.current_question,
           response.selected_panel_member,
           response.panel_member_details?.gender || 'Female',
           () => {
             // Once spoken, notify backend and start listening for candidate answer
-            api.notifyAgoraEvent(interviewId, 'question_started', { first_question: true }).catch(() => {});
-            agoraRef.current?.startListening(null, true);
+            api.questionStarted(interviewId).catch(() => {});
+            voiceRef.current?.startListening(null, true);
           },
           false,
           response.panel_member_details
@@ -275,7 +276,7 @@ export default function App() {
       ws.on('speaker_changed', (data) => {
         setLiveTranscript('');
         liveTranscriptRef.current = '';
-        agoraRef.current?.stopListening();
+        voiceRef.current?.stopListening();
 
         setInterviewState((prev) => ({
           ...prev,
@@ -290,12 +291,12 @@ export default function App() {
         }));
         // Auto-speak immediately as soon as question is generated
         if (data.question && data.panel_member) {
-          agoraRef.current?.speakPersonaMessage(
+          voiceRef.current?.speakPersonaMessage(
             data.question,
             data.panel_member,
             data.gender || data.panel_member_details?.gender || 'Female',
             () => {
-              agoraRef.current?.startListening(null, true);
+              voiceRef.current?.startListening(null, true);
             },
             false,
             data.panel_member_details
@@ -324,7 +325,7 @@ export default function App() {
           if (reportRequested) return;
           reportRequested = true;
           try {
-            const finalStatus = await api.notifyAgoraEvent(interviewId, 'speech_finished');
+            const finalStatus = await api.speechFinished(interviewId);
             if (finalStatus?.report) {
               setInterviewState((prev) => ({
                 ...prev,
@@ -350,7 +351,7 @@ export default function App() {
         const safetyTimer = setTimeout(triggerReportGeneration, 8000);
 
         // Speak closing message, then notify speech_finished
-        agoraRef.current?.speakPersonaMessage(
+        voiceRef.current?.speakPersonaMessage(
           data.message,
           data.panel_member,
           data.gender || data.panel_member_details?.gender || 'Female',
@@ -383,21 +384,11 @@ export default function App() {
         }
       });
 
-      // 4. Concurrently initialize Microphone & Agora RTC in background (non-blocking!)
+      // 4. Concurrently initialize Microphone & ElevenLabs RTC in background (non-blocking!)
       (async () => {
         try {
-          const micResult = await agoraRef.current.requestMicrophonePermission();
+          const micResult = await voiceRef.current.requestMicrophonePermission(interviewId);
           setMicStatus(micResult.status);
-
-          const agoraInfo = response.agora || (await api.getAgoraToken(interviewId));
-          if (agoraInfo && agoraInfo.app_id) {
-            await agoraRef.current.joinChannel(
-              agoraInfo.app_id,
-              agoraInfo.channel,
-              agoraInfo.token,
-              agoraInfo.uid
-            );
-          }
         } catch (setupErr) {
           console.warn('Background microphone/RTC setup warning:', setupErr);
         }
@@ -413,24 +404,24 @@ export default function App() {
   const handleToggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
-    agoraRef.current?.setMuted(nextMuted);
+    voiceRef.current?.setMuted(nextMuted);
   };
 
   const handleClearTranscript = () => {
     setLiveTranscript('');
     liveTranscriptRef.current = '';
-    agoraRef.current?.resetRecognition();
+    voiceRef.current?.resetRecognition();
   };
 
   // Toggle Voice Recording
   const handleToggleRecord = () => {
-    agoraRef.current?.stopSpeaking();
+    voiceRef.current?.stopSpeaking();
 
     const recorded = (liveTranscriptRef.current || liveTranscript || '').trim();
     if (isRecording || recorded) {
       setIsRecording(false);
       setPauseCountdown(null);
-      agoraRef.current?.stopListening();
+      voiceRef.current?.stopListening();
       if (recorded) {
         handleSubmitAnswer(recorded, 'voice');
       }
@@ -442,7 +433,7 @@ export default function App() {
       setLiveTranscript('');
       liveTranscriptRef.current = '';
       setWasInterrupted(false);
-      agoraRef.current?.startListening(null, true);
+      voiceRef.current?.startListening(null, true);
     }
   };
 
@@ -459,8 +450,8 @@ export default function App() {
     setPauseCountdown(null);
     setLiveTranscript('');
     liveTranscriptRef.current = '';
-    agoraRef.current?.stopSpeaking();
-    agoraRef.current?.stopListening();
+    voiceRef.current?.stopSpeaking();
+    voiceRef.current?.stopListening();
 
     try {
       const activeState = interviewStateRef.current || interviewState;
@@ -492,7 +483,7 @@ export default function App() {
           if (done) return;
           done = true;
           try {
-            const res = await api.notifyAgoraEvent(interviewId, 'speech_finished');
+            const res = await api.speechFinished(interviewId);
             if (res?.report) {
               setInterviewState((prev) => ({ ...prev, ...res, report: res.report, stage: 'COMPLETED' }));
               setScreen('REPORT');
@@ -503,7 +494,7 @@ export default function App() {
         };
 
         const timer = setTimeout(triggerFinished, 8000);
-        agoraRef.current?.speakPersonaMessage(
+        voiceRef.current?.speakPersonaMessage(
           closingMsg,
           closingMember,
           closingGender,
@@ -516,13 +507,13 @@ export default function App() {
         );
       } else if (updated.current_question && updated.selected_panel_member) {
         // Speak as soon as the question is generated
-        agoraRef.current?.speakPersonaMessage(
+        voiceRef.current?.speakPersonaMessage(
           updated.current_question,
           updated.selected_panel_member,
           updated.panel_member_details?.gender || 'Female',
           () => {
             // Once interviewer finishes speaking the next question, prime mic to listen fresh
-            agoraRef.current?.startListening(null, true);
+            voiceRef.current?.startListening(null, true);
           },
           false,
           updated.panel_member_details
@@ -542,8 +533,8 @@ export default function App() {
   // End Interview manually or automatically on 100s silence
   const handleEndInterview = async (promptConfirm = true) => {
     if (promptConfirm && !confirm('Are you sure you want to conclude the interview and generate the evaluation report?')) return;
-    agoraRef.current?.stopSpeaking();
-    agoraRef.current?.stopListening();
+    voiceRef.current?.stopSpeaking();
+    voiceRef.current?.stopListening();
     const interviewId = interviewState?.interview_id;
     if (!interviewId) return;
 
@@ -562,7 +553,7 @@ export default function App() {
         if (done) return;
         done = true;
         try {
-          const res = await api.notifyAgoraEvent(interviewId, 'speech_finished');
+          const res = await api.speechFinished(interviewId);
           if (res?.report) {
             setInterviewState((prev) => ({ ...prev, ...res, report: res.report, stage: 'COMPLETED' }));
             setScreen('REPORT');
@@ -581,7 +572,7 @@ export default function App() {
 
       const fallbackTimer = setTimeout(finishAndShowReport, 7000);
 
-      agoraRef.current?.speakPersonaMessage(
+      voiceRef.current?.speakPersonaMessage(
         closingMsg,
         closingMember,
         closingGender,
@@ -595,7 +586,7 @@ export default function App() {
     } catch (err) {
       console.warn('Manual conclusion failed:', err);
       try {
-        const res = await api.notifyAgoraEvent(interviewId, 'speech_finished');
+        const res = await api.speechFinished(interviewId);
         if (res?.report) {
           setInterviewState((prev) => ({ ...prev, ...res, report: res.report, stage: 'COMPLETED' }));
           setScreen('REPORT');
@@ -607,7 +598,7 @@ export default function App() {
   };
 
   const handleReset = () => {
-    agoraRef.current?.leaveChannel();
+    voiceRef.current?.leaveChannel();
     wsRef.current?.disconnect();
     setInterviewState(null);
     setScreen('DEVICE_CHECK');
@@ -626,7 +617,7 @@ export default function App() {
 
     const interval = setInterval(() => {
       // If interviewer is currently speaking, candidate is listening -> keep timer at 0
-      if (agoraRef.current?.isInterviewerSpeaking()) {
+      if (voiceRef.current?.isInterviewerSpeaking()) {
         lastCandidateSpeechTimeRef.current = Date.now();
         setSilenceSeconds(0);
         return;
@@ -737,7 +728,7 @@ export default function App() {
           onSubmitAnswer={handleSubmitAnswer}
           onEndInterview={handleEndInterview}
           loadingAnswer={loadingAnswer}
-          onCandidateInteracted={() => agoraRef.current?.stopSpeaking()}
+          onCandidateInteracted={() => voiceRef.current?.stopSpeaking()}
           micVolume={micVolume}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}

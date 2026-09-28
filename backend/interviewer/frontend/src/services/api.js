@@ -85,21 +85,8 @@ export const api = {
       method: 'POST',
     }),
 
-  // Request Agora RTC token
-  getAgoraToken: (interviewId) =>
-    request(`/interviews/${interviewId}/agora/token`, {
-      method: 'POST',
-    }),
-
-  // Dispatch client Agora audio event
-  notifyAgoraEvent: (interviewId, eventName, data = {}) =>
-    request(`/interviews/${interviewId}/agora/event`, {
-      method: 'POST',
-      body: JSON.stringify({
-        event: eventName,
-        data,
-      }),
-    }),
+  questionStarted: (interviewId) => request(`/interviews/${interviewId}/question-started`, { method: 'POST' }),
+  speechFinished: (interviewId) => request(`/interviews/${interviewId}/speech-finished`, { method: 'POST' }),
 
   // Parse candidate resume
   parseResume: (resumeText) =>

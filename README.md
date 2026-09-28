@@ -121,8 +121,8 @@ Each panel member receives a distinct role, seniority level, evaluation focus, b
    - Our reasoning engine formulates a targeted internal question pattern:
      `"Candidate gave a sound technical Redis caching setup, but ignored customer transaction consistency and payment checkout impact. Challenge them on user-facing implications during cache inconsistencies."`
 
-4. **Step 4: Natural Question Generation and Delivery**
-   - Agora Conversational AI's LLM transforms the pattern into a conversational challenge:
+4. **Step 4: Direct Spoken Question Generation and Delivery**
+   - `otheragent.py` directly formulates the natural, polite spoken challenge using the stage prompt:
      `"That caching setup handles the load well technically, Dhruv. But looking at this from our customers' perspective: if a user makes a payment and sees an outdated balance because of that 5-minute cache delay, they might panic and submit a duplicate charge. How would you design this so customers never experience inconsistent transaction states?"`
    - Agora TTS synthesizes the audio using Neha's distinct persona voice.
 
@@ -150,10 +150,9 @@ flowchart TD
         ROOM["Interview Room UI & Live Transcript"]
     end
 
-    subgraph AgoraVoice ["Agora Conversational AI Services"]
+    subgraph AgoraVoice ["Agora Voice Services (STT & TTS)"]
         RTC["Agora RTC Channel (Audio I/O)"]
         STT["Agora STT (Whisper Transcription)"]
-        AGORA_LLM["Agora Conversational LLM"]
         TTS["Neural TTS (Voice Persona Synthesis)"]
     end
 
@@ -169,6 +168,7 @@ flowchart TD
         GROQ["Groq LPU (Prompts <= 7,500 tokens, Fast Turns)"]
         GEMINI["Google AI Studio Gemini (Prompts > 7,500 tokens, 120k TPM)"]
         ROTATION["Dynamic Multi-Key Token Bucket Rotation (Up to 20 Keys)"]
+        PROMPTS["3 Stage Prompts in prompt.py (Normal, Extended, Final)"]
     end
 
     subgraph Storage ["Persistent Storage Layer"]
@@ -183,16 +183,16 @@ flowchart TD
     CONTROLLER -->|"Persist State & Events"| MONGO
     CONTROLLER -->|"Index Resume Chunks"| QDRANT
     
-    CONTROLLER -->|"Reasoning Payload"| GATEWAY
+    CONTROLLER -->|"Reasoning & Stage Context"| GATEWAY
     GATEWAY --> ROTATION
     ROTATION -->|"<= 7.5k Tokens"| GROQ
     ROTATION -->|"> 7.5k Tokens"| GEMINI
+    GROQ <--> PROMPTS
     
-    GROQ -->|"Question Pattern & Turn-Taking"| CONTROLLER
+    GROQ -->|"Direct Spoken Question & Turn-Taking"| CONTROLLER
     GEMINI -->|"Full Context Evaluation Report"| CONTROLLER
     
-    CONTROLLER -->|"Question Pattern Instruction"| AGORA_LLM
-    AGORA_LLM -->|"Natural Spoken Question"| TTS
+    CONTROLLER -->|"Spoken Question to Deliver"| TTS
     TTS -->|"Synthesized Persona Audio"| RTC
     RTC -->|"Spoken Question to Candidate"| ROOM
     
@@ -208,17 +208,18 @@ flowchart TD
 
 ---
 
-### Dual-LLM Strategy: Agora-Supported Voice LLM and External Reasoning Brain
+### External LLM Reasoning & Direct Question Generation Architecture
 
-A critical architectural distinction in our system is the coordinated use of **both Agora-supported LLMs and External LLMs**:
+A critical architectural design in our system is the centralized cognitive control powered by **External LLMs (`otheragent.py`)** with Agora dedicated strictly to **ultra-low latency STT and neural TTS voice transport**:
 
-1. **Agora Conversational AI LLM (Voice-Facing)**:
-   - Base models out-of-the-box in voice systems lack the entropy, memory capacity, and domain reasoning necessary to act as an autonomous interview committee.
-   - In our system, the Agora-supported LLM is utilized exclusively for **conversational naturalization**: it takes our high-level question instruction and turns it into natural, second-person spoken speech, free of internal meta-evaluations.
+1. **Agora Voice Services (Audio Stream I/O, STT & TTS)**:
+   - Agora RTC manages bidirectional WebRTC audio transport.
+   - Agora STT provides real-time speech transcription from candidate audio input.
+   - Agora TTS synthesizes neural speech for each interviewer persona without any LLM latency or interference in the stream.
 
-2. **External Reasoning Brain (Cognitive Control)**:
-   - Our external LLM layer handles all reasoning, candidate evaluation, turn-taking, topic direction, difficulty scaling, and comprehensive report generation.
-   - **Groq does NOT speak directly to the candidate during iterative stages.** Groq outputs a concise *question pattern*. Agora Conversational AI's LLM formulates the actual question, and Agora TTS speaks it.
+2. **External Reasoning Brain (`otheragent.py`)**:
+   - Our external LLM reasoning brain handles cognitive control: candidate answer analysis, turn-taking decisions, 3 distinct stage question generation prompts in `prompts.py` (Normal, Extended, Final), System Design Canvas vision questions, and final evidence-based scoring reports.
+   - **Direct Spoken Question Generation**: Rather than passing high-level instructions through an intermediate stream LLM, `otheragent.py` directly formulates the natural, polite, second-person spoken interview question tailored to the exact lifecycle stage, which Agora TTS immediately delivers.
 
 ---
 
@@ -353,7 +354,7 @@ Momentum incorporates an interactive architectural sketch pad for technical eval
 | **Dynamic Panel Generator** | Evaluates the job description and candidate profile to construct a tailored interview panel of 1 to 5 fictional personas with distinct roles, seniorities, evaluation criteria, and behavioral rules. |
 | **Voice Catalog & Persona Mapper** | Maps panel members to distinct neural voices with specific genders, accents (American, British, Indian), and vocal tones (warm, analytical, authoritative, pragmatic). |
 | **Agora STT Voice Pipeline** | Manages real-time audio capture from the Agora RTC channel, tracking speech start, streaming partial transcription chunks, aggregating final utterances, and detecting candidate speech completion. |
-| **Agora LLM Conversational Formulator** | Translates internal Groq question patterns into natural, polite, direct spoken questions, stripping internal meta-commentary or negative evaluations. |
+| **Stage Question Generation Engine** | Powered directly by `otheragent.py` using 3 stage-specific prompts in `prompts.py` (Normal, Extended, Final) to formulate natural spoken questions directly. |
 | **Agora TTS Audio Dispatcher** | Synthesizes and streams high-fidelity neural audio over the Agora RTC channel matching the active interviewer's voice. |
 | **Structured Evaluation & Scoring Engine** | Parses full interview transcripts, validates schema integrity, normalizes multi-dimensional scores (0-100), extracts transcript-backed strengths and concerns, and assigns hiring recommendations. |
 | **Database Persistence Layer** | Utilizes MongoDB as the primary source of truth for jobs, candidates, interview states, answers, and evaluation reports. Utilizes Qdrant Cloud for semantic resume chunk indexing. |

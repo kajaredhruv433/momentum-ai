@@ -8,7 +8,7 @@ Python stage files import these prompts rather than embedding prompt strings dir
 from __future__ import annotations
 
 # ============================================================================
-# 4. INTERVIEW PREPARATION
+# 1. INTERVIEW PREPARATION
 # ============================================================================
 INTERVIEW_PREP_PROMPT = """You are preparing an interview for this target role: {role}.
 
@@ -32,7 +32,7 @@ Example output:
 
 
 # ============================================================================
-# 5. START STAGE
+# 2. START STAGE
 # ============================================================================
 START_STAGE_PROMPT = """These are the company details:
 
@@ -53,9 +53,6 @@ Example output:
 "Welcome, Dhruv we are your AI Interviewers. It's great to have you with us today. To get started, could you walk me through your experience building backend systems?" """
 
 
-# ============================================================================
-# 6. START PANEL SELECTION
-# ============================================================================
 START_PANEL_SELECTION_PROMPT = """These are the available interview panel members:
 
 {panels}
@@ -70,11 +67,11 @@ Return ONLY the exact panel member name from {panels}.
 
 Example output:
 
-"Dhruv kajare" """
+"Dhruv" """
 
 
 # ============================================================================
-# 9. NORMAL STAGE - DECISION
+# 3. NORMAL STAGE - DECISION & DIRECTION
 # ============================================================================
 NORMAL_DECISION_PROMPT = """Decide whether the interview should continue or conclude.
 
@@ -103,9 +100,8 @@ DRAW
 Example output:
 
 CONTINUE"""
-# ============================================================================
-# 10.1 system design prompt
-# ============================================================================
+
+
 DRAW_prompt = """Ask the candidate to design and draw a system architecture on the canvas.
 
 The candidate should explain and visually represent the major components, services, databases, APIs, data flow, and important design decisions for the proposed system.
@@ -120,9 +116,7 @@ Example:
 "Let's do a system design exercise. Please use the canvas to draw the architecture for a scalable system that can handle millions of users. As you design it, walk me through the major components, data flow, database choices, APIs, and the key trade-offs behind your design."
 """
 
-# ============================================================================
-# 11. NORMAL STAGE - DIRECTION
-# ============================================================================
+
 NORMAL_DIRECTION_PROMPT = """Based on the interview so far, choose what should be asked next.
 
 Interview so far:
@@ -146,9 +140,6 @@ Example output:
 "Distributed Systems" """
 
 
-# ============================================================================
-# 12. ROLE/AREA PATH
-# ============================================================================
 ROLE_AREA_PROMPT = """Choose the next uncovered area to evaluate.
 
 Covered areas:
@@ -173,125 +164,43 @@ Example output:
 
 
 # ============================================================================
-# 13. PROJECT PATH - GROQ QUESTION PATTERN
+# 4. STAGE 1: NORMAL STAGE - DIRECT QUESTION GENERATION PROMPT
 # ============================================================================
-PROJECT_QUESTION_PROMPT = """Create a practical question-generation instruction for Agora using the candidate's project.
+NORMAL_STAGE_QUESTION_PROMPT = """You are an expert technical interviewer conducting the NORMAL stage of a live voice interview with a candidate.
 
-Candidate projects:
+Candidate Profile:
+{candidate_profile}
 
-{candidate_projects}
+Candidate Context / Specific Skills or Projects:
+{candidate_context}
 
-Selected area:
-
+Selected Interview Area:
 {selected_area}
 
-Connect something the candidate actually built to the selected area and test how the candidate would handle a realistic problem.
+Interview Transcript & History So Far:
+{question_answer_history}
 
-Prefer a pattern such as:
+Candidate's Latest Response:
+{last_candidate_response}
 
-"You built X; how would you handle Y?"
+Your task is to generate the next spoken interview question for the candidate in the NORMAL stage.
 
-Decide whether the question should:
-1. Reference something the candidate already said, or
-2. Introduce a fresh scenario.
+CRITICAL GUIDELINES:
+1. Directly address the candidate in the second person ("you" / "your").
+2. Focus on core technical competence, validating actual projects and skills mentioned, and probing real-world problem-solving in the "{selected_area}" domain.
+3. If the candidate successfully answered the previous question, transition smoothly and naturally into this next topic or probe a meaningful nuance of what they shared.
+4. If the candidate struggled or stated they did not know the previous answer, be encouraging, professional, and conversational (e.g., "No problem at all, let's explore another area...") and smoothly introduce this new question.
+5. NEVER include internal meta-commentary, evaluation notes, brackets, or negative criticisms (e.g. do NOT say "As you failed to answer...", "Since the candidate didn't mention...").
+6. The output must be a PURE, natural, highly professional spoken question ready to be read aloud directly to the candidate.
+7. Return ONLY the spoken question text. Do NOT include quotes, interviewer labels, or preambles.
 
-Return ONLY a concise question-generation instruction for Agora.
-
-Do NOT write the final polished interview question.
-
-Example output:
-
-"As the candidate mentioned earlier that they built a Redis caching system, ask how they would handle a cache stampede during a sudden traffic spike." """
-
-
-# ============================================================================
-# 14. AGORA QUESTION GENERATION PROMPT (Sent to Agora Conversational AI LLM)
-# ============================================================================
-AGORA_QUESTION_GENERATION_PROMPT = """You are speaking directly to a candidate in a live technical interview.
-Internal question direction from the reasoning agent:
-
-{question_pattern}
-
-Generate the actual, pure interview question you will speak aloud to the candidate.
-
-CRITICAL INSTRUCTIONS:
-1. Speak directly to the candidate using second person ('you' / 'your').
-2. The question must be a PURE, direct, professional interview question.
-3. NEVER include negative evaluation commentary, meta-criticism, or internal rationale such as:
-   - "As you were not able to..."
-   - "Since you haven't addressed..."
-   - "Because you didn't mention..."
-   - "As the candidate was not able to..."
-4. Never state what the candidate did or did not fail to answer in previous turns.
-5. Transform the core technical scenario directly into an engaging, natural interview question.
-6. Return ONLY the single spoken question. Do NOT include quotes, intros, or labels."""
+Example Output:
+"You mentioned using Redis and PostgreSQL in your recent e-commerce project. How did you handle cache invalidation to ensure users never saw stale pricing or inventory during flash sales?"
+"""
 
 
 # ============================================================================
-# 15. PANEL SELECTION (Takes question_pattern from Groq)
-# ============================================================================
-PANEL_SELECTION_PROMPT = """Available panel members:
-
-{panels}
-
-Selected interview area:
-
-{selected_area}
-
-Question-generation instruction:
-
-{question_pattern}
-
-Choose the panel member whose role and expertise best match this interview topic.
-
-Return ONLY the exact panel member name from {panels}.
-
-Example output:
-
-"Dhruv" """
-
-
-# ============================================================================
-# 16. SKILL PATH - GROQ QUESTION PATTERN
-# ============================================================================
-SKILL_QUESTION_PROMPT = """Create a concise question-generation instruction for Agora that tests the candidate's practical understanding of this skill.
-
-Candidate skills:
-
-{candidate_skills}
-
-Selected area:
-
-{selected_area}
-
-Focus on real-world application rather than memorization.
-
-Decide whether to reference the candidate's previous answer or ask a fresh question.
-
-Return ONLY the question-generation instruction for Agora.
-
-Do NOT write the final polished interview question.
-
-Example output:
-
-"As the candidate mentioned Python backend development earlier, ask how they would design the API to remain reliable under thousands of simultaneous requests." """
-
-
-AGORA_SKILL_QUESTION_PROMPT = """Using this instruction from the reasoning agent:
-
-{question_pattern}
-
-Generate the actual interview question.
-
-Naturally reference the candidate's previous answer only if the instruction asks for it.
-
-Otherwise generate a fresh question around the requested topic.
-
-Ask ONLY one question."""
-
-
-# ============================================================================
-# 18. EXTENDED STAGE - DECISION
+# 5. EXTENDED STAGE - DECISION & DIRECTION
 # ============================================================================
 EXTENDED_DECISION_PROMPT = """The base interview time has ended.
 
@@ -328,9 +237,6 @@ Example output:
 CONTINUE"""
 
 
-# ============================================================================
-# 19. EXTENDED STAGE - DIRECTION
-# ============================================================================
 EXTENDED_DIRECTION_PROMPT = """Choose the most valuable next interview direction.
 
 Interview so far:
@@ -355,76 +261,43 @@ Example output:
 
 
 # ============================================================================
-# 20. EXTENDED PROJECT PATTERN
+# 6. STAGE 2: EXTENDED STAGE - DIRECT DIFFICULT QUESTION GENERATION PROMPT
 # ============================================================================
-EXTENDED_PROJECT_QUESTION_PROMPT = """Create a difficult question-generation instruction for Agora.
+EXTENDED_STAGE_QUESTION_PROMPT = """You are an expert technical interviewer conducting the EXTENDED stage of a live voice interview with a candidate.
+The candidate has performed well during the base interview time and is now being challenged with deeper, advanced, and production-level scenarios.
 
-Candidate projects:
+Candidate Profile:
+{candidate_profile}
 
-{candidate_projects}
+Candidate Context / Specific Skills or Projects:
+{candidate_context}
 
-Selected area:
-
+Selected Interview Area:
 {selected_area}
 
-Connect the candidate's actual project experience to a difficult real-world scenario.
+Interview Transcript & History So Far:
+{question_answer_history}
 
-Test deeper reasoning, trade-offs, scalability, failure handling, or design decisions.
+Candidate's Latest Response:
+{last_candidate_response}
 
-Decide whether to:
-1. Reference something the candidate already said, or
-2. Ask a fresh difficult scenario.
+Your task is to generate a challenging, in-depth technical interview question for the EXTENDED stage.
 
-Return ONLY a concise question-generation instruction for Agora.
+CRITICAL GUIDELINES:
+1. Directly address the candidate in the second person ("you" / "your").
+2. Probe advanced engineering trade-offs, high-concurrency bottlenecks, distributed failure modes, production outages, latency spikes, data consistency, or recovery strategies in the "{selected_area}" domain.
+3. Challenge the candidate to justify architectural choices, defend trade-offs (e.g., consistency vs. latency, horizontal vs. vertical scaling), and think through edge cases under heavy production load.
+4. Keep the question engaging, rigorous, and conversational—spoken directly to the candidate.
+5. NEVER include internal meta-criticism or evaluation commentary (e.g., do NOT say "Since you didn't explain...").
+6. Return ONLY the single spoken question text. Do NOT include quotes, interviewer labels, or preambles.
 
-Do NOT write the final polished interview question.
-
-Example output:
-
-"As the candidate mentioned earlier that they built a distributed backend service, ask how they would redesign it if one dependency started failing intermittently under heavy production traffic." """
-
-
-# ============================================================================
-# 21. EXTENDED SKILL PATTERN
-# ============================================================================
-EXTENDED_SKILL_QUESTION_PROMPT = """Create a difficult question-generation instruction for Agora.
-
-Candidate skills:
-
-{candidate_skills}
-
-Selected area:
-
-{selected_area}
-
-Test deeper reasoning, trade-offs, debugging, scalability, failure handling, or real-world application.
-
-Decide whether to reference the candidate's previous response or ask a fresh question.
-
-Return ONLY a concise question-generation instruction for Agora.
-
-Do NOT write the final polished interview question.
-
-Example output:
-
-"As the candidate previously described working with Python APIs, ask how they would diagnose and fix a sudden latency increase in the production service." """
-
-
-AGORA_EXTENDED_QUESTION_PROMPT = """Using this instruction from the reasoning agent:
-
-{question_pattern}
-
-Generate the actual difficult interview question.
-
-If previous candidate context is referenced, naturally incorporate it.
-
-Otherwise create a fresh question around the requested scenario.
-
-Ask ONLY one question."""
+Example Output:
+"In your distributed architecture, suppose a sudden 10x traffic spike causes your primary message queue to back up and downstream worker nodes begin timing out intermittently. How would you design backpressure and rate limiting so the core service remains available without dropping mission-critical events?"
+"""
 
 
 # ============================================================================
-# 22. FINAL STAGE - DECISION
+# 7. FINAL STAGE - DECISION
 # ============================================================================
 FINAL_DECISION_PROMPT = """The extended interview time has ended.
 
@@ -462,53 +335,74 @@ CONCLUDE"""
 
 
 # ============================================================================
-# 23. FINAL QUESTION PATTERN
+# 8. STAGE 3: FINAL STAGE - DIRECT DECISIVE QUESTION GENERATION PROMPT
 # ============================================================================
-FINAL_QUESTION_PROMPT = """This will be the final interview question.
+FINAL_STAGE_QUESTION_PROMPT = """You are an expert senior interviewer conducting the FINAL stage of a live technical interview.
+This is the decisive final phase of the interview. The candidate has demonstrated strong technical capabilities, and you are permitted to ask strictly ONE decisive, high-complexity final question before the interview concludes unconditionally.
 
-Areas already covered:
-
-{covered_areas}
-
-Candidate knowledge demonstrated so far:
-
-{knowledge_from_previous_questions}
-
-Valuable remaining areas:
-
-{areas_to_cover}
-
-Candidate profile:
-
+Candidate Profile:
 {candidate_profile}
 
-Choose the single most valuable final topic/question direction.
+Areas Already Covered:
+{covered_areas}
 
-Create a concise question-generation instruction for Agora.
+Knowledge and Demonstrated Insights So Far:
+{knowledge_from_previous_questions}
 
-Decide whether to reference something the candidate previously said or ask a fresh final question.
+Remaining High-Value Areas:
+{areas_to_cover}
 
-Return ONLY the question-generation instruction.
+Candidate's Latest Response:
+{last_candidate_response}
 
-Do NOT write the final polished interview question.
+Your task is to generate the single, decisive FINAL interview question.
 
-Example output:
+CRITICAL GUIDELINES:
+1. Directly address the candidate in the second person ("you" / "your").
+2. Pose a holistic, high-impact technical challenge or strategic architectural problem that synthesizes multiple concepts (e.g., system reliability, scalability, security, business impact, or high-stakes trade-offs).
+3. The question must give the candidate a clear opportunity to showcase their technical vision, architectural maturity, and problem-solving depth.
+4. Keep the tone authoritative, engaging, and professional.
+5. Ask strictly ONE comprehensive question.
+6. Return ONLY the spoken question text. Do NOT include quotes, interviewer labels, or preambles.
 
-"As the candidate previously demonstrated experience with distributed systems, ask one final question about maintaining availability during a regional failure." """
+Example Output:
+"For our final question today: If you were tasked with migrating a monolithic core system processing billions of dollars in daily transactions to an event-driven microservices topology with zero downtime and strict financial consistency, what would be your step-by-step rollout and rollback strategy?"
+"""
 
 
 # ============================================================================
-# 24. FINAL PANEL SELECTION
+# 9. PANEL SELECTION PROMPTS
 # ============================================================================
-FINAL_PANEL_SELECTION_PROMPT = """Available panel members:
+PANEL_SELECTION_PROMPT = """Available interview panel members:
 
 {panels}
 
-Final question-generation instruction:
+Selected interview area:
 
-{question_pattern}
+{selected_area}
 
-Choose the panel member whose role and expertise best matches the final question.
+Interview question to be asked:
+
+{question}
+
+Choose the panel member whose role, seniority, and technical expertise best matches this specific interview topic and question.
+
+Return ONLY the exact panel member name from {panels}.
+
+Example output:
+
+"Dhruv" """
+
+
+FINAL_PANEL_SELECTION_PROMPT = """Available interview panel members:
+
+{panels}
+
+Final interview question to be asked:
+
+{question}
+
+Choose the senior panel member whose role and domain expertise best matches this decisive final question.
 
 Return ONLY the exact panel member name from {panels}.
 
@@ -518,25 +412,7 @@ Example output:
 
 
 # ============================================================================
-# 25. AGORA FINAL QUESTION
-# ============================================================================
-AGORA_FINAL_QUESTION_PROMPT = """This is the FINAL interview question.
-
-Using this instruction:
-
-{question_pattern}
-
-Generate the actual final interview question.
-
-Ask ONLY one question.
-
-Do not generate any additional question.
-
-After the candidate answers, the interview MUST conclude."""
-
-
-# ============================================================================
-# 26. CONCLUSION
+# 10. CONCLUSION PROMPTS
 # ============================================================================
 CONCLUDE_PROMPT = """The interview is complete.
 
@@ -559,9 +435,6 @@ Example output:
 "Thank you for your time today. That concludes the interview. We appreciate you sharing your experience and insights with us." """
 
 
-# ============================================================================
-# 27. CLOSING PANEL
-# ============================================================================
 CONCLUDE_PANEL_PROMPT = """Available panel members:
 
 {panels}
@@ -579,10 +452,7 @@ Example output:
 "Juhi" """
 
 
-# ============================================================================
-# 28. AGORA CLOSING
-# ============================================================================
-AGORA_CLOSING_PROMPT = """Speak this closing message naturally as the selected interview panel member:
+ElevenLabs_CLOSING_PROMPT = """Speak this closing message naturally as the selected interview panel member:
 
 {closing_message}
 
@@ -596,7 +466,7 @@ This is the final spoken message of the interview."""
 
 
 # ============================================================================
-# 29. REPORT
+# 11. EVALUATION REPORT PROMPT
 # ============================================================================
 REPORT_PROMPT = """Evaluate this candidate against the company and role.
 
@@ -647,3 +517,18 @@ The recommendation must be one of:
 "Do Not Hire"
 
 Base every score and statement on the provided resume and interview evidence."""
+
+
+# ============================================================================
+# BACKWARD COMPATIBILITY ALIASES
+# ============================================================================
+PROJECT_QUESTION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
+SKILL_QUESTION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
+EXTENDED_PROJECT_QUESTION_PROMPT = EXTENDED_STAGE_QUESTION_PROMPT
+EXTENDED_SKILL_QUESTION_PROMPT = EXTENDED_STAGE_QUESTION_PROMPT
+FINAL_QUESTION_PROMPT = FINAL_STAGE_QUESTION_PROMPT
+
+ElevenLabs_QUESTION_GENERATION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
+ElevenLabs_SKILL_QUESTION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
+ElevenLabs_EXTENDED_QUESTION_PROMPT = EXTENDED_STAGE_QUESTION_PROMPT
+ElevenLabs_FINAL_QUESTION_PROMPT = FINAL_STAGE_QUESTION_PROMPT

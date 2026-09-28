@@ -5,10 +5,9 @@ Coordinates the complete multi-panel AI interview lifecycle:
 - State machine: PREPARING -> PANEL_READY -> STARTING -> WAITING_FOR_FIRST_QUESTION
   -> NORMAL -> EXTENDED -> FINAL -> CONCLUDING -> WAITING_FOR_CLOSING_SPEECH
   -> REPORTING -> COMPLETED
-- Server-authoritative timer (starts ONLY when Agora begins speaking the opening question)
+- Server-authoritative timer (starts when the client begins playing the opening question)
 - Groq reasoning brain (via otheragent.py - IMMUTABLE)
 - Existing panel.py, resume.py, voice.py, mongo.py, qdrant.py
-- Central Agora Conversational AI engine (RTC, STT, LLM, TTS, events)
 - Uniform candidate answer pipeline (voice & typing)
 - Gated report generation strictly after closing speech completion
 """
@@ -22,8 +21,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 try:
     from . import resume
-    from .agora.adapter import get_agora_adapter
-    from .agora.events import AgoraEvent, AgoraEventType
     from .conclude import create_conclusion
     from .extended_stage import next_extended_action
     from .final_stage import final_action
@@ -53,8 +50,6 @@ try:
     from .voice import assign_voices_to_panel
 except ImportError:
     import resume
-    from agora.adapter import get_agora_adapter
-    from agora.events import AgoraEvent, AgoraEventType
     from conclude import create_conclusion
     from extended_stage import next_extended_action
     from final_stage import final_action
@@ -98,11 +93,7 @@ class InterviewController:
     ) -> None:
         self.base_time_seconds = base_time_seconds
         self.extended_time_seconds = extended_time_seconds
-        self.agora = get_agora_adapter()
         self.event_subscribers: List[Callable[[str, str, Dict[str, Any]], None]] = []
-
-        # Wire Agora adapter events to internal handler
-        self.agora.on_any_event(self._handle_agora_event)
 
     def subscribe(self, callback: Callable[[str, str, Dict[str, Any]], None]) -> None:
         """Subscribe WebSocket broadcast handlers to interview events."""
@@ -178,7 +169,6 @@ class InterviewController:
             "company_details": state.get("company_details"),
             "closing": state.get("closing"),
             "history": state.get("history", []),
-            "agora": state.get("agora", {}),
             "requires_canvas": bool(current_q.get("requires_canvas")) if isinstance(current_q, dict) else False,
             "current_question_kind": current_q.get("question_kind") if isinstance(current_q, dict) else None,
             "canvas_submissions": [
@@ -216,9 +206,9 @@ class InterviewController:
         4. Generate interview panel via existing panel.py.
         5. Assign unique voices via existing voice.py.
         6. Generate opening question + select panel speaker via start_stage.py.
-        7. Set up Agora channel & tokens.
-        8. Deliver opening question to Agora TTS.
-        Note: Timer starts ONLY when Agora begins speaking the opening question!
+        7. Set up ElevenLabs channel & tokens.
+        8. Deliver opening question to ElevenLabs TTS.
+        Note: Timer starts ONLY when ElevenLabs begins speaking the opening question!
         """
         interview_id = str(uuid.uuid4())
         cid = candidate_id or str(uuid.uuid4())
@@ -256,7 +246,6 @@ class InterviewController:
             "extended_time": ext_sec,
             "interview_start_timestamp": None,
             "final_question_asked": False,
-            "agora": {},
             "created_at": self._now(),
         }
         self._save_state(state)
@@ -329,22 +318,6 @@ class InterviewController:
         state["stage"] = WAITING_FOR_FIRST_QUESTION
         state["interview_phase"] = "starting"
 
-        # 7. Connect Agora session and tokens
-        self._broadcast(interview_id, "agora_connecting", {})
-        agora_info = self.agora.connect(interview_id, panel=panel_with_voices)
-        state["agora"] = agora_info
-        self._broadcast(interview_id, "agora_connected", agora_info)
-
-        # 8. Deliver opening question to Agora TTS
-        # NOTE: Timer does NOT start here. Timer starts when speech delivery begins!
-        self.agora.speak_message(
-            interview_id=interview_id,
-            message=start_action["question"],
-            panel_member=start_action["panel_member"],
-            member_details=start_action["panel_member_details"],
-            is_opening_question=True,
-        )
-
         self._save_state(state)
         member_gender = (start_action.get("panel_member_details") or {}).get("gender") or "Female"
         self._broadcast(interview_id, "speaker_changed", {
@@ -359,12 +332,12 @@ class InterviewController:
         return self._public(state)
 
     # ========================================================================
-    # TIMER START (TRIGGERED STRICTLY BY AGORA SPEECH-START EVENT)
+    # TIMER START (TRIGGERED STRICTLY BY ElevenLabs SPEECH-START EVENT)
     # ========================================================================
 
     def on_question_started(self, interview_id: str, is_first: bool = False) -> Dict[str, Any]:
         """
-        Invoked when Agora begins speaking an interview question.
+        Invoked when ElevenLabs begins speaking an interview question.
         Requirement 8: For the opening question, this starts the server-authoritative timer.
         """
         state = self._get_state(interview_id)
@@ -401,7 +374,7 @@ class InterviewController:
         question_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Process candidate response (from either Agora STT or typing textarea).
+        Process candidate response (from either ElevenLabs STT or typing textarea).
         Evaluates stage transitions authoritatively based on server elapsed time.
         """
         state = self._get_state(interview_id)
@@ -533,7 +506,7 @@ class InterviewController:
             self._broadcast(interview_id, "interview_concluding", {})
             self._broadcast(interview_id, "stage_changed", {"stage": CONCLUDING})
 
-            # Generate closing message and hand off to Agora TTS
+            # Generate closing message; the client requests ElevenLabs TTS.
             closing = create_conclusion(state["history"], state["panel"], interview_id=interview_id)
             state["closing"] = closing
             state["current_question"] = None
@@ -552,14 +525,6 @@ class InterviewController:
             state["current_question"] = action
             state["interview_phase"] = action.get("stage", "NORMAL").lower()
             self._save_state(state)
-
-            # Deliver next question to Agora TTS
-            self.agora.speak_message(
-                interview_id=interview_id,
-                message=action["question"],
-                panel_member=action["panel_member"],
-                member_details=action.get("panel_member_details"),
-            )
 
             member_gender = (action.get("panel_member_details") or {}).get("gender") or "Female"
             self._broadcast(interview_id, "speaker_changed", {
@@ -596,7 +561,7 @@ class InterviewController:
         self._broadcast(interview_id, "interview_concluding", {})
         self._broadcast(interview_id, "stage_changed", {"stage": CONCLUDING})
 
-        # Generate closing message and hand off to Agora TTS
+        # Generate closing message; the client requests ElevenLabs TTS.
         closing = create_conclusion(state.get("history", []), state.get("panel", {}), interview_id=interview_id)
         state["closing"] = closing
         state["current_question"] = None
@@ -615,7 +580,7 @@ class InterviewController:
 
     def on_closing_speech_finished(self, interview_id: str) -> Dict[str, Any]:
         """
-        Triggered strictly when Agora confirms the closing speech has finished.
+        Triggered strictly when ElevenLabs closing audio has finished.
         Requirement 28 & 50: Report MUST NOT be generated before closing speech finishes.
         """
         state = self._get_state(interview_id)
@@ -740,41 +705,6 @@ class InterviewController:
         return self._public(state)
 
     # ========================================================================
-    # AGORA EVENT ADAPTER HANDLER
-    # ========================================================================
-
-    def _handle_agora_event(self, event: AgoraEvent) -> None:
-        """Process normalized Agora event dispatched by adapter."""
-        iid = event.interview_id
-        etype = event.event_type
-
-        if etype == AgoraEventType.QUESTION_STARTED:
-            is_first = event.data.get("first_question", False)
-            if is_first:
-                try:
-                    self.on_question_started(iid, is_first=True)
-                except Exception as exc:
-                    logger.warning("Error starting timer on speech event: %s", exc)
-
-        elif etype == AgoraEventType.SPEECH_STARTED:
-            self._broadcast(iid, "candidate_speaking", {})
-
-        elif etype == AgoraEventType.TRANSCRIPT_PARTIAL:
-            self._broadcast(iid, "candidate_transcript", {"text": event.data.get("text", "")})
-
-        elif etype == AgoraEventType.TRANSCRIPT_FINAL:
-            pass
-
-        elif etype == AgoraEventType.SPEECH_FINISHED:
-            if event.data.get("closing"):
-                try:
-                    self.on_closing_speech_finished(iid)
-                except Exception as exc:
-                    logger.warning("Error finalizing report after closing speech: %s", exc)
-
-        elif etype == AgoraEventType.ERROR:
-            self._broadcast(iid, "error", {"message": event.error_message or str(event.data)})
-
     # ========================================================================
     # PUBLIC ACCESSORS
     # ========================================================================

@@ -337,35 +337,6 @@ def _score_voice(member, voice):
     return score
 
 
-def _build_agora_config(voice):
-    """
-    Build an Agora-facing configuration object.
-
-    IMPORTANT:
-    provider_voice_id is the ID belonging to the selected TTS provider.
-    It should only be sent to Agora when that provider is actually
-    configured in the Agora Conversational AI agent.
-
-    We intentionally do not invent a fake Agora voice ID.
-    """
-
-    return {
-        "language": "en",
-        "provider": "elevenlabs",
-        "provider_voice_id": voice["elevenlabs_voice_id"],
-
-        # Adapter fields.
-        "voice_name": voice["name"],
-        "gender": voice["gender"],
-        "accent": voice["accent"],
-        "tone": voice["tone"],
-
-        # Your Agora integration can translate this object into the
-        # exact Agora Conversational AI TTS configuration.
-        "configured": False
-    }
-
-
 def assign_voices_to_panel(panel_dict):
     """
     Assign a unique natural voice to every panel member.
@@ -450,11 +421,6 @@ def assign_voices_to_panel(panel_dict):
 
         output_member["elevenlabs_voice_id"] = (
             voice["elevenlabs_voice_id"]
-        )
-
-        # Dedicated Agora configuration.
-        output_member["agora"] = _build_agora_config(
-            voice
         )
 
         # Voice personality for the conversational agent.

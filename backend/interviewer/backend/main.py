@@ -38,7 +38,7 @@ logger = logging.getLogger("echosphere.main")
 
 app = FastAPI(
     title="EchoSphere AI Interview Platform",
-    description="Multi-panel AI Interview Platform with central Agora Conversational AI and Groq reasoning.",
+    description="Multi-panel AI Interview Platform with ElevenLabs speech and Groq reasoning.",
     version="1.0.0",
 )
 

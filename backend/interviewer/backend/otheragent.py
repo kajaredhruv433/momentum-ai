@@ -25,7 +25,7 @@ except ImportError as package_error:
     from groqrouter import route_groq
     from geminirouter import route_gemini
 
-ROUTING_TOKEN_LIMIT = 7500
+ROUTING_TOKEN_LIMIT = 6500
 
 
 def _get_tokenizer():

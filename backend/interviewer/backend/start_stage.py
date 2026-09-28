@@ -5,8 +5,8 @@ Handles the opening stage of the interview:
 1. Groq generates welcome greeting + first interview question (START_STAGE_PROMPT).
 2. Groq decides which panel member asks it (START_PANEL_SELECTION_PROMPT).
 3. Uses existing voice.py metadata for the selected panel member.
-4. Sends the opening question to Agora adapter to speak via the panel member's voice.
-5. TIMER DOES NOT START HERE (starts on Agora speech-start event).
+4. Sends the opening question to ElevenLabs adapter to speak via the panel member's voice.
+5. TIMER DOES NOT START HERE (starts on ElevenLabs speech-start event).
 """
 from __future__ import annotations
 

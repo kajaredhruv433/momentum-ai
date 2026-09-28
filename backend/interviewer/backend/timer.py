@@ -19,7 +19,7 @@ except ImportError:
 class InterviewTimer:
     """
     Server-authoritative timer.
-    Starts ONLY when Agora speech-start event fires for the first interview question.
+    Starts ONLY when ElevenLabs speech-start event fires for the first interview question.
     """
 
     def __init__(
