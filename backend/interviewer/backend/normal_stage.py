@@ -7,7 +7,7 @@ Direct reasoning and question generation via otheragent (Groq/Gemini):
 2. If CONCLUDE -> stops asking questions and hands off to conclude.py.
 3. If DRAW -> asks canvas system design architecture question directly.
 4. If CONTINUE -> selects area and generates direct spoken question via NORMAL_STAGE_QUESTION_PROMPT.
-5. Selects panel member based on domain and question (PANEL_SELECTION_PROMPT).
+5. Selects the exact panel member to speak via NORMAL_PANEL_SELECTION_PROMPT (stage-specific, context-aware).
 6. Dispatches directly to ElevenLabs TTS for voice delivery.
 """
 from __future__ import annotations
@@ -21,8 +21,8 @@ try:
         DRAW_prompt,
         NORMAL_DECISION_PROMPT,
         NORMAL_DIRECTION_PROMPT,
+        NORMAL_PANEL_SELECTION_PROMPT,
         NORMAL_STAGE_QUESTION_PROMPT,
-        PANEL_SELECTION_PROMPT,
         ROLE_AREA_PROMPT,
     )
     from .stage_utils import (
@@ -38,8 +38,8 @@ except ImportError:
         DRAW_prompt,
         NORMAL_DECISION_PROMPT,
         NORMAL_DIRECTION_PROMPT,
+        NORMAL_PANEL_SELECTION_PROMPT,
         NORMAL_STAGE_QUESTION_PROMPT,
-        PANEL_SELECTION_PROMPT,
         ROLE_AREA_PROMPT,
     )
     from stage_utils import (
@@ -103,10 +103,12 @@ def next_normal_action(
         )
         question = clean_text(ask_groq(draw_instruction))
 
-        panel_prompt = PANEL_SELECTION_PROMPT.format(
+        # Select the panel member who should speak this DRAW question
+        panel_prompt = NORMAL_PANEL_SELECTION_PROMPT.format(
             panels=as_json(panel),
             selected_area=selected_area,
             question=question,
+            question_answer_history=as_json(history),
         )
         selected_member = validated_panel_member(panel_prompt, panel)
 
@@ -174,11 +176,12 @@ def next_normal_action(
     )
     question = clean_text(ask_groq(q_prompt))
 
-    # Select panel member matching the area and question
-    panel_prompt = PANEL_SELECTION_PROMPT.format(
+    # Select the panel member who should speak this NORMAL question
+    panel_prompt = NORMAL_PANEL_SELECTION_PROMPT.format(
         panels=as_json(panel),
         selected_area=selected_area,
         question=question,
+        question_answer_history=as_json(history),
     )
     selected_member = validated_panel_member(panel_prompt, panel)
 

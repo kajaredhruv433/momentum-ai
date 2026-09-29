@@ -3,56 +3,12 @@ import re
 try:  # Supports both `python -m backend.main` and legacy root execution.
     from .otheragent import ask_groq
     from .stage_utils import repair_json
+    from .prompts import PANEL_PROMPT
 except ImportError:  # pragma: no cover
     from otheragent import ask_groq
     from stage_utils import repair_json
+    from prompts import PANEL_PROMPT
 
-
-PANEL_PROMPT = """
-You are designing an AI interview panel.
-
-Create the minimum necessary panel of 1-5 fictional AI interviewers for the supplied job.
-
-Rules:
-- Each member must have a unique responsibility.
-- name = realistic human first name, NOT a job title.
-- Names are fictional AI interviewer personas, not real employees.
-- gender must be exactly "Male" or "Female".
-- role = professional interviewer role.
-- seniority must match the role.
-- Each interviewer must have a distinct interview stage/focus.
-- Add a concise persona describing how the interviewer behaves.
-- Add concise behavior rules for conducting the interview.
-- Do not invent company/job facts.
-- If salary is unavailable, preserve "Not Disclosed".
-- Return ONLY valid JSON.
-
-Possible roles when relevant:
-HR Manager, Technical Interviewer, Senior Software Engineer,
-Engineering Manager, Project Manager, Product Manager, Domain Expert.
-
-JSON schema:
-
-{
-  "panel_size": 2,
-  "panel1": {
-    "name": "Juhi",
-    "gender": "Female",
-    "role": "HR Manager",
-    "seniority": "Manager",
-    "interview_stage": "HR Round",
-    "evaluation_focus": ["Communication", "Behavior"],
-    "reason_for_inclusion": "Evaluates communication and behavioral fit.",
-    "persona": "Warm, professional and perceptive.",
-    "behavior": [
-      "Ask clear behavioral questions.",
-      "Probe vague answers with relevant follow-ups.",
-      "Remain professional and encouraging.",
-      "Do not answer questions for the candidate."
-    ]
-  }
-}
-"""
 
 
 def _parse_groq_json(response):
@@ -292,7 +248,7 @@ Job:
 
             data = {
                 "panel1": {
-                    "name": "Juhi",
+                    "name": "Juhi Nale",
                     "gender": "Female",
                     "role": "HR Manager",
                     "seniority": "Manager",
@@ -306,7 +262,7 @@ Job:
                     ]
                 },
                 "panel2": {
-                    "name": "Rahul",
+                    "name": "Dhruv Kajare",
                     "gender": "Male",
                     "role": f"Senior {role}",
                     "seniority": "Senior",

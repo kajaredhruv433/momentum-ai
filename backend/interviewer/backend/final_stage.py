@@ -6,7 +6,7 @@ Direct reasoning and decisive question generation via otheragent (Groq/Gemini):
 1. Groq decision: CONTINUE vs CONCLUDE (FINAL_DECISION_PROMPT).
    Favors CONCLUDE unless candidate is exceptionally strong.
 2. If CONTINUE -> generates exactly ONE decisive final question via FINAL_STAGE_QUESTION_PROMPT.
-3. Selects panel member based on final question (FINAL_PANEL_SELECTION_PROMPT).
+3. Selects the exact panel member to speak via FINAL_PANEL_SELECTION_PROMPT (stage-specific, context-aware).
 4. Dispatches directly to ElevenLabs TTS for voice delivery.
 5. Once the candidate answers this final question, interview forcefully concludes.
 """
@@ -84,10 +84,12 @@ def final_action(
     )
     question = clean_text(ask_groq(question_prompt))
 
-    # 3. Select panel member for final question
+    # 3. Select the panel member who should speak this FINAL question
     panel_prompt = FINAL_PANEL_SELECTION_PROMPT.format(
         panels=as_json(panel),
         question=question,
+        covered_areas=as_json(covered_areas),
+        knowledge_from_previous_questions=as_json(history),
     )
     selected_member = validated_panel_member(panel_prompt, panel)
 

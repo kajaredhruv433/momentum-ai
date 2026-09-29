@@ -232,146 +232,31 @@ VOICE_CATALOG: List[Dict[str, Any]] = [
     for v in INTERVIEW_VOICES.values()
 ]
 
-ROLE_PREFERENCES: Dict[str, List[str]] = {
-    "hr": [
-        "warm",
-        "empathetic",
-        "conversational",
-        "supportive",
-        "polished",
-        "bright",
-        "reassuring",
-    ],
-    "technical": [
-        "analytical",
-        "technical",
-        "precise",
-        "methodical",
-        "rigorous",
-        "logical",
-        "deep",
-        "direct",
-    ],
-    "engineering": [
-        "authoritative",
-        "technical",
-        "systems",
-        "strategic",
-        "methodical",
-        "confident",
-    ],
-    "project": [
-        "pragmatic",
-        "communicative",
-        "structured",
-        "collaborative",
-        "energetic",
-    ],
-    "product": [
-        "articulate",
-        "business-minded",
-        "visionary",
-        "clear",
-        "strategic",
-        "conversational",
-    ],
-    "domain": [
-        "analytical",
-        "rigorous",
-        "logical",
-        "inquisitive",
-        "knowledgeable",
-    ],
-}
 
 
 def get_voice_catalog() -> List[Dict[str, Any]]:
     return deepcopy(VOICE_CATALOG)
 
 
-def _role_category(role: str) -> str:
-    role_lower = str(role or "").lower()
-    if "hr" in role_lower or "recruiter" in role_lower or "people" in role_lower:
-        return "hr"
-    if (
-        "software engineer" in role_lower
-        or "technical" in role_lower
-        or "developer" in role_lower
-        or "architect" in role_lower
-    ):
-        return "technical"
-    if "engineering manager" in role_lower or "lead" in role_lower:
-        return "engineering"
-    if "project manager" in role_lower or "scrum" in role_lower:
-        return "project"
-    if "product manager" in role_lower or "product" in role_lower:
-        return "product"
-    if "domain" in role_lower or "senior" in role_lower or "executive" in role_lower:
-        return "domain"
-    return "technical"
-
-
-def _score_voice(member: Dict[str, Any], voice: Dict[str, Any]) -> int:
-    score = 0
-    member_gender = str(member.get("gender", "")).lower().strip()
-    voice_gender = str(voice.get("gender", "")).lower().strip()
-
-    # Gender matching
-    if voice_gender == "neutral" or member_gender == voice_gender:
-        score += 100
-        if member_gender == voice_gender:
-            score += 25
-    else:
-        return -1000
-
-    role = str(member.get("role", "")).lower()
-    best_for = [b.lower() for b in voice.get("best_for", [])]
-    for b in best_for:
-        if any(term in role for term in b.split()):
-            score += 30
-
-    category = _role_category(member.get("role", ""))
-    preferences = ROLE_PREFERENCES.get(category, [])
-    voice_text = " ".join([
-        str(voice.get("tone", "")),
-        str(voice.get("interview_style", "")),
-        *voice.get("personality", []),
-        *voice.get("best_for", []),
-    ]).lower()
-
-    for preference in preferences:
-        if preference.lower() in voice_text:
-            score += 15
-
-    persona_text = " ".join([
-        str(member.get("persona", "")),
-        str(member.get("interview_stage", "")),
-        " ".join(member.get("evaluation_focus", []) if isinstance(member.get("evaluation_focus"), list) else []),
-    ]).lower()
-
-    for p in voice.get("personality", []):
-        if p.lower() in persona_text:
-            score += 8
-
-    if "conversational" in voice_text:
-        score += 5
-    if "warm" in voice_text:
-        score += 3
-    if "professional" in voice_text:
-        score += 3
-
-    return score
-
-
 def assign_voices_to_panel(panel_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Assign a unique natural ElevenLabs voice to every panel member.
+    Assign a unique ElevenLabs voice to every panel member based on gender only.
+
+    Voice selection rules:
+    1. Pick any unused voice that matches the panel member's gender.
+    2. If all same-gender voices are exhausted, pick any remaining unused voice.
+    3. If all voices are used (panel > catalog size), reuse from the full catalog.
+
+    No role-category or keyword scoring is applied — the LLM decides panel roles and
+    personas; this function only ensures every member gets a distinct, gender-matched
+    voice. The voice's own ElevenLabs characteristics (personality, tone, accent) are
+    automatically carried by the selected voice_id.
     """
     if not isinstance(panel_dict, dict):
         raise ValueError("panel_dict must be a dictionary.")
 
     result: Dict[str, Any] = {}
-    used_voice_ids = set()
+    used_voice_ids: set = set()
 
     for panel_id, member in panel_dict.items():
         if not isinstance(member, dict):
@@ -379,48 +264,43 @@ def assign_voices_to_panel(panel_dict: Dict[str, Any]) -> Dict[str, Any]:
 
         raw_gender = str(member.get("gender", "Female")).strip()
         gender_normalized = raw_gender.capitalize()
-        role = member.get("role", "Interviewer")
 
-        candidates = []
-        for voice in VOICE_CATALOG:
-            v_gender = voice["gender"].lower()
-            m_gender = gender_normalized.lower()
-            if v_gender != m_gender and v_gender != "neutral":
-                continue
-            if voice["voice_id"] in used_voice_ids:
-                continue
-            candidates.append(voice)
+        # Step 1: Collect unused voices that match the requested gender.
+        candidates = [
+            v for v in VOICE_CATALOG
+            if (v["gender"].lower() == gender_normalized.lower() or v["gender"].lower() == "neutral")
+            and v["voice_id"] not in used_voice_ids
+        ]
 
-        # Fallback if all matching-gender voices are used
+        # Step 2: Fallback — any unused voice regardless of gender.
         if not candidates:
-            for voice in VOICE_CATALOG:
-                if voice["voice_id"] not in used_voice_ids:
-                    candidates.append(voice)
+            candidates = [v for v in VOICE_CATALOG if v["voice_id"] not in used_voice_ids]
 
-        # Extreme fallback
+        # Step 3: Extreme fallback — reuse the full catalog if every voice is exhausted.
         if not candidates:
-            candidates = VOICE_CATALOG
+            candidates = list(VOICE_CATALOG)
 
-        selected_voice = max(candidates, key=lambda v: _score_voice(member, v))
+        # Pick the first available candidate (stable, deterministic ordering).
+        selected_voice = candidates[0]
         used_voice_ids.add(selected_voice["voice_id"])
 
-        voice = deepcopy(selected_voice)
+        chosen = deepcopy(selected_voice)
         output_member = deepcopy(member)
 
-        # Populate top-level voice fields
-        output_member["voice"] = voice["name"]
-        output_member["voiceId"] = voice["voice_id"]
-        output_member["voice_id"] = voice["voice_id"]
-        output_member["elevenlabs_voice_id"] = voice["voice_id"]
-        output_member["voiceName"] = voice["name"]
-        output_member["voiceGender"] = voice["gender"]
-        output_member["voiceAccent"] = voice["accent"]
-        output_member["voiceTone"] = voice.get("tone", "")
-        output_member["voice_personality"] = voice.get("personality", [])
-        output_member["best_for"] = voice.get("best_for", [])
-        output_member["interview_style"] = voice.get("interview_style", "")
+        # Populate voice fields on the panel member.
+        output_member["voice"] = chosen["name"]
+        output_member["voiceId"] = chosen["voice_id"]
+        output_member["voice_id"] = chosen["voice_id"]
+        output_member["elevenlabs_voice_id"] = chosen["voice_id"]
+        output_member["voiceName"] = chosen["name"]
+        output_member["voiceGender"] = chosen["gender"]
+        output_member["voiceAccent"] = chosen["accent"]
+        output_member["voiceTone"] = chosen.get("tone", "")
+        output_member["voice_personality"] = chosen.get("personality", [])
+        output_member["best_for"] = chosen.get("best_for", [])
+        output_member["interview_style"] = chosen.get("interview_style", "")
 
-        # Handoff metadata
+        # Handoff metadata.
         output_member["handoff"] = {
             "can_handoff": True,
             "next_panel_member": None,
@@ -429,7 +309,7 @@ def assign_voices_to_panel(panel_dict: Dict[str, Any]) -> Dict[str, Any]:
 
         result[panel_id] = output_member
 
-    # Deterministic handoffs
+    # Wire deterministic handoff chain.
     panel_ids = list(result.keys())
     for index, panel_id in enumerate(panel_ids):
         if index + 1 < len(panel_ids):

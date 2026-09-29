@@ -32,7 +32,57 @@ Example output:
 
 
 # ============================================================================
-# 2. START STAGE
+# 2. PANEL SELECTION - AI PANEL CREATION
+# ============================================================================
+PANEL_PROMPT = """
+You are designing an AI interview panel.
+
+Create the minimum necessary panel of 1-5 fictional AI interviewers for the supplied job.
+
+Rules:
+- Each member must have a unique responsibility.
+- name = realistic human first name, NOT a job title.
+- Names are fictional AI interviewer personas, not real employees.
+- gender must be exactly "Male" or "Female".
+- role = professional interviewer role.
+- seniority must match the role.
+- Each interviewer must have a distinct interview stage/focus.
+- Add a concise persona describing how the interviewer behaves.
+- Add concise behavior rules for conducting the interview.
+- Do not invent company/job facts.
+- If salary is unavailable, preserve "Not Disclosed".
+- Return ONLY valid JSON.
+
+Possible roles when relevant:
+HR Manager, Technical Interviewer, Senior Software Engineer,
+Engineering Manager, Project Manager, Product Manager, Domain Expert.
+
+JSON schema:
+
+{
+  "panel_size": 2,
+  "panel1": {
+    "name": "Juhi Nale",
+    "gender": "Female",
+    "role": "HR Manager",
+    "seniority": "Manager",
+    "interview_stage": "HR Round",
+    "evaluation_focus": ["Communication", "Behavior"],
+    "reason_for_inclusion": "Evaluates communication and behavioral fit.",
+    "persona": "Warm, professional and perceptive.",
+    "behavior": [
+      "Ask clear behavioral questions.",
+      "Probe vague answers with relevant follow-ups.",
+      "Remain professional and encouraging.",
+      "Do not answer questions for the candidate."
+    ]
+  }
+}
+"""
+
+
+# ============================================================================
+# 3. START STAGE - GREETING & FIRST QUESTION GENERATION
 # ============================================================================
 START_STAGE_PROMPT = """These are the company details:
 
@@ -53,6 +103,9 @@ Example output:
 "Welcome, Dhruv we are your AI Interviewers. It's great to have you with us today. To get started, could you walk me through your experience building backend systems?" """
 
 
+# ============================================================================
+# 4. START STAGE - PANEL SELECTION FOR FIRST QUESTION
+# ============================================================================
 START_PANEL_SELECTION_PROMPT = """These are the available interview panel members:
 
 {panels}
@@ -67,11 +120,11 @@ Return ONLY the exact panel member name from {panels}.
 
 Example output:
 
-"Dhruv" """
+"Dhruv Kajare" """
 
 
 # ============================================================================
-# 3. NORMAL STAGE - DECISION & DIRECTION
+# 5. NORMAL STAGE - DECISION (CONTINUE / CONCLUDE / DRAW)
 # ============================================================================
 NORMAL_DECISION_PROMPT = """Decide whether the interview should continue or conclude.
 
@@ -102,6 +155,9 @@ Example output:
 CONTINUE"""
 
 
+# ============================================================================
+# 6. NORMAL STAGE - SYSTEM DESIGN / ARCHITECTURE CANVAS QUESTION
+# ============================================================================
 DRAW_prompt = """Ask the candidate to design and draw a system architecture on the canvas.
 
 The candidate should explain and visually represent the major components, services, databases, APIs, data flow, and important design decisions for the proposed system.
@@ -117,6 +173,9 @@ Example:
 """
 
 
+# ============================================================================
+# 7. NORMAL STAGE - TOPIC & DIRECTION SELECTION
+# ============================================================================
 NORMAL_DIRECTION_PROMPT = """Based on the interview so far, choose what should be asked next.
 
 Interview so far:
@@ -140,6 +199,9 @@ Example output:
 "Distributed Systems" """
 
 
+# ============================================================================
+# 8. NORMAL STAGE - ROLE AREA SELECTION
+# ============================================================================
 ROLE_AREA_PROMPT = """Choose the next uncovered area to evaluate.
 
 Covered areas:
@@ -164,7 +226,7 @@ Example output:
 
 
 # ============================================================================
-# 4. STAGE 1: NORMAL STAGE - DIRECT QUESTION GENERATION PROMPT
+# 9. NORMAL STAGE - QUESTION GENERATION
 # ============================================================================
 NORMAL_STAGE_QUESTION_PROMPT = """You are an expert technical interviewer conducting the NORMAL stage of a live voice interview with a candidate.
 
@@ -200,7 +262,56 @@ Example Output:
 
 
 # ============================================================================
-# 5. EXTENDED STAGE - DECISION & DIRECTION
+# 10. NORMAL STAGE - PANEL SELECTION FOR QUESTION
+# ============================================================================
+NORMAL_PANEL_SELECTION_PROMPT = """You are selecting which interview panel member
+must speak the NEXT interview question.
+
+Available interview panel members:
+{panels}
+
+Interview stage:
+NORMAL
+
+Selected interview area:
+{selected_area}
+
+Generated interview question:
+{question}
+
+Interview history:
+{question_answer_history}
+
+Your task is to decide WHICH panel member is best qualified to ask this
+specific question.
+
+IMPORTANT:
+- The selected panel member MUST be the person who speaks the question.
+- Choose based on the panel member's role, expertise, and responsibility.
+- Do NOT generate or modify the question.
+- Do NOT select based only on the candidate's previous answer.
+- Match the panel member to the actual topic of the question.
+- If the question is technical/backend/ML/system-design, prefer the relevant
+  technical panel member.
+- If the question is behavioral/HR/culture-related, prefer the HR panel member.
+- If the question concerns product/business decisions, prefer the Product
+  Manager or Hiring Manager.
+- Return exactly ONE panel member.
+- Return ONLY the exact panel member name from {panels}.
+
+The selected panel member will be assigned the corresponding ElevenLabs voice
+and will speak this exact question.
+
+Return ONLY the panel member name.
+"""
+
+
+# Backward-compatibility alias (used by any code still importing PANEL_SELECTION_PROMPT)
+PANEL_SELECTION_PROMPT = NORMAL_PANEL_SELECTION_PROMPT
+
+
+# ============================================================================
+# 11. EXTENDED STAGE - DECISION (CONTINUE / CONCLUDE)
 # ============================================================================
 EXTENDED_DECISION_PROMPT = """The base interview time has ended.
 
@@ -237,6 +348,9 @@ Example output:
 CONTINUE"""
 
 
+# ============================================================================
+# 12. EXTENDED STAGE - TOPIC & DIRECTION SELECTION
+# ============================================================================
 EXTENDED_DIRECTION_PROMPT = """Choose the most valuable next interview direction.
 
 Interview so far:
@@ -261,7 +375,7 @@ Example output:
 
 
 # ============================================================================
-# 6. STAGE 2: EXTENDED STAGE - DIRECT DIFFICULT QUESTION GENERATION PROMPT
+# 13. EXTENDED STAGE - ADVANCED QUESTION GENERATION
 # ============================================================================
 EXTENDED_STAGE_QUESTION_PROMPT = """You are an expert technical interviewer conducting the EXTENDED stage of a live voice interview with a candidate.
 The candidate has performed well during the base interview time and is now being challenged with deeper, advanced, and production-level scenarios.
@@ -297,7 +411,50 @@ Example Output:
 
 
 # ============================================================================
-# 7. FINAL STAGE - DECISION
+# 14. EXTENDED STAGE - PANEL SELECTION FOR QUESTION
+# ============================================================================
+EXTENDED_PANEL_SELECTION_PROMPT = """You are selecting which interview panel
+member MUST speak the NEXT EXTENDED-stage question.
+
+Available interview panel members:
+{panels}
+
+Interview stage:
+EXTENDED
+
+Selected interview area:
+{selected_area}
+
+Generated question:
+{question}
+
+Interview history:
+{question_answer_history}
+
+Candidate's latest response:
+{last_candidate_response}
+
+Choose the panel member whose role and expertise best match this specific
+advanced question.
+
+IMPORTANT:
+- This is an EXTENDED-stage question and may involve advanced architecture,
+  scalability, debugging, distributed systems, production failures,
+  trade-offs, or deep technical reasoning.
+- The selected panel member MUST be the person who speaks this exact question.
+- Do NOT generate another question.
+- Do NOT rewrite the question.
+- Do NOT return a role description.
+- Return ONLY one exact panel member name from {panels}.
+
+The selected panel member's ElevenLabs voice will be used to speak the question.
+
+Return ONLY the panel member name.
+"""
+
+
+# ============================================================================
+# 15. FINAL STAGE - DECISION (CONTINUE / CONCLUDE)
 # ============================================================================
 FINAL_DECISION_PROMPT = """The extended interview time has ended.
 
@@ -335,7 +492,7 @@ CONCLUDE"""
 
 
 # ============================================================================
-# 8. STAGE 3: FINAL STAGE - DIRECT DECISIVE QUESTION GENERATION PROMPT
+# 16. FINAL STAGE - DECISIVE FINAL QUESTION GENERATION
 # ============================================================================
 FINAL_STAGE_QUESTION_PROMPT = """You are an expert senior interviewer conducting the FINAL stage of a live technical interview.
 This is the decisive final phase of the interview. The candidate has demonstrated strong technical capabilities, and you are permitted to ask strictly ONE decisive, high-complexity final question before the interview concludes unconditionally.
@@ -371,48 +528,45 @@ Example Output:
 
 
 # ============================================================================
-# 9. PANEL SELECTION PROMPTS
+# 17. FINAL STAGE - PANEL SELECTION FOR FINAL QUESTION
 # ============================================================================
-PANEL_SELECTION_PROMPT = """Available interview panel members:
+FINAL_PANEL_SELECTION_PROMPT = """You are selecting which interview panel
+member MUST speak the FINAL interview question.
 
+Available interview panel members:
 {panels}
 
-Selected interview area:
+Interview stage:
+FINAL
 
-{selected_area}
-
-Interview question to be asked:
-
+Final interview question:
 {question}
 
-Choose the panel member whose role, seniority, and technical expertise best matches this specific interview topic and question.
+Areas already covered:
+{covered_areas}
 
-Return ONLY the exact panel member name from {panels}.
+Knowledge demonstrated:
+{knowledge_from_previous_questions}
 
-Example output:
+Choose the panel member whose seniority, responsibility, and domain expertise
+best match this final question.
 
-"Dhruv" """
+IMPORTANT:
+- The selected panel member MUST speak this exact final question.
+- This is the FINAL question of the interview.
+- Prefer the most appropriate senior panel member for the actual topic.
+- Do NOT generate another question.
+- Do NOT modify the question.
+- Return ONLY one exact panel member name from {panels}.
 
+After this question is answered, the interview must conclude.
 
-FINAL_PANEL_SELECTION_PROMPT = """Available interview panel members:
-
-{panels}
-
-Final interview question to be asked:
-
-{question}
-
-Choose the senior panel member whose role and domain expertise best matches this decisive final question.
-
-Return ONLY the exact panel member name from {panels}.
-
-Example output:
-
-"Dhruv" """
+Return ONLY the panel member name.
+"""
 
 
 # ============================================================================
-# 10. CONCLUSION PROMPTS
+# 18. CONCLUSION - CLOSING MESSAGE GENERATION
 # ============================================================================
 CONCLUDE_PROMPT = """The interview is complete.
 
@@ -435,6 +589,9 @@ Example output:
 "Thank you for your time today. That concludes the interview. We appreciate you sharing your experience and insights with us." """
 
 
+# ============================================================================
+# 19. CONCLUSION - PANEL SELECTION FOR CLOSING MESSAGE
+# ============================================================================
 CONCLUDE_PANEL_PROMPT = """Available panel members:
 
 {panels}
@@ -452,6 +609,9 @@ Example output:
 "Juhi" """
 
 
+# ============================================================================
+# 20. CONCLUSION - VOICE TTS CLOSING DELIVERY
+# ============================================================================
 ElevenLabs_CLOSING_PROMPT = """Speak this closing message naturally as the selected interview panel member:
 
 {closing_message}
@@ -466,7 +626,7 @@ This is the final spoken message of the interview."""
 
 
 # ============================================================================
-# 11. EVALUATION REPORT PROMPT
+# 21. EVALUATION REPORT GENERATION
 # ============================================================================
 REPORT_PROMPT = """Evaluate this candidate against the company and role.
 

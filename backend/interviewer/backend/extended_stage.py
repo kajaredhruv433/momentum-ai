@@ -6,7 +6,7 @@ Direct reasoning and deeper question generation via otheragent (Groq/Gemini):
 1. Groq decision: CONTINUE vs CONCLUDE (EXTENDED_DECISION_PROMPT).
 2. If CONTINUE -> selects area via EXTENDED_DIRECTION_PROMPT.
 3. Generates difficult, production-grade spoken question via EXTENDED_STAGE_QUESTION_PROMPT.
-4. Selects panel member based on domain and question (PANEL_SELECTION_PROMPT).
+4. Selects the exact panel member to speak via EXTENDED_PANEL_SELECTION_PROMPT (stage-specific, context-aware).
 5. Dispatches directly to ElevenLabs TTS for voice delivery.
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ try:
     from .prompts import (
         EXTENDED_DECISION_PROMPT,
         EXTENDED_DIRECTION_PROMPT,
+        EXTENDED_PANEL_SELECTION_PROMPT,
         EXTENDED_STAGE_QUESTION_PROMPT,
-        PANEL_SELECTION_PROMPT,
     )
     from .stage_utils import (
         as_json,
@@ -34,8 +34,8 @@ except ImportError:
     from prompts import (
         EXTENDED_DECISION_PROMPT,
         EXTENDED_DIRECTION_PROMPT,
+        EXTENDED_PANEL_SELECTION_PROMPT,
         EXTENDED_STAGE_QUESTION_PROMPT,
-        PANEL_SELECTION_PROMPT,
     )
     from stage_utils import (
         as_json,
@@ -103,11 +103,13 @@ def next_extended_action(
     )
     question = clean_text(ask_groq(q_prompt))
 
-    # 4. Select panel member matching the area and question
-    panel_prompt = PANEL_SELECTION_PROMPT.format(
+    # 4. Select the panel member who should speak this EXTENDED question
+    panel_prompt = EXTENDED_PANEL_SELECTION_PROMPT.format(
         panels=as_json(panel),
         selected_area=selected_area,
         question=question,
+        question_answer_history=as_json(history),
+        last_candidate_response=answer,
     )
     selected_member = validated_panel_member(panel_prompt, panel)
 
