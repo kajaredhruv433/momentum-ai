@@ -1,7 +1,7 @@
 """
 main.py
 
-FastAPI application serving the EchoSphere AI Interview Platform backend APIs,
+FastAPI application serving the Momentum AI Interview Platform backend APIs,
 WebSocket event stream, and hosting the frontend UI.
 """
 from __future__ import annotations
@@ -34,10 +34,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
     handlers=[logging.StreamHandler(), logging.FileHandler(LOG_PATH, encoding="utf-8")],
 )
-logger = logging.getLogger("echosphere.main")
+logger = logging.getLogger("momentum.main")
 
 app = FastAPI(
-    title="EchoSphere AI Interview Platform",
+    title="Momentum AI Interview Platform",
     description="Multi-panel AI Interview Platform with ElevenLabs speech and Groq reasoning.",
     version="1.0.0",
 )
@@ -68,7 +68,7 @@ async def on_startup():
 
 @app.get("/api/health")
 def health() -> Dict[str, str]:
-    return {"status": "ok", "service": "EchoSphere AI Interview Platform"}
+    return {"status": "ok", "service": "Momentum AI Interview Platform"}
 
 
 # Host frontend static files (prefers built dist/ if available, otherwise frontend root)
@@ -90,7 +90,7 @@ def serve_root():
                 "Expires": "0",
             },
         )
-    return {"status": "ok", "service": "EchoSphere AI Interview Platform"}
+    return {"status": "ok", "service": "Momentum AI Interview Platform"}
 
 
 if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():

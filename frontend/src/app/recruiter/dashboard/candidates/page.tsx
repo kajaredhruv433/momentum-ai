@@ -245,7 +245,7 @@ export default function CandidatesPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-black text-slate-100">{interviewedCandidates.length}</div>
-                        <p className="text-xs text-slate-400 mt-1">Evaluated by EchoSphere</p>
+                        <p className="text-xs text-slate-400 mt-1">Evaluated by Momentum</p>
                     </CardContent>
                 </Card>
 

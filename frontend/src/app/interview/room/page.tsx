@@ -17,7 +17,7 @@ function LoadingFallback() {
     return (
         <div className="flex min-h-[80vh] flex-col items-center justify-center gap-4 text-slate-300">
             <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
-            <p className="text-lg font-medium">Connecting to EchoSphere AI Interview Room...</p>
+            <p className="text-lg font-medium">Connecting to Momentum AI Interview Room...</p>
         </div>
     )
 }
@@ -38,7 +38,7 @@ function InterviewRedirector() {
         if (email) query.set("candidateEmail", email)
         if (uid) query.set("candidateId", uid)
 
-        // Redirect directly to the full native EchoSphere v9 interview experience
+        // Redirect directly to the full native Momentum interview experience
         const targetUrl = `http://localhost:8000/?${query.toString()}`
         window.location.href = targetUrl
     }, [searchParams])

@@ -177,6 +177,21 @@ def validated_decision(prompt: str, allow_draw: bool = False) -> str:
     raise ValueError(f"Invalid interview decision after retry: '{raw}'")
 
 
+def validated_followup_kind(prompt: str) -> str:
+    """Validate the explicit route chosen after a CONTINUE decision."""
+    pattern = r"\b(CLARIFICATION|PROJECT|AREA)\b"
+    for attempt in range(2):
+        current_prompt = prompt if attempt == 0 else (
+            prompt + "\n\nCRITICAL: Return ONLY one word: CLARIFICATION, PROJECT, or AREA."
+        )
+        raw = prompt_text(current_prompt)
+        matches = re.findall(pattern, raw.upper())
+        if matches:
+            return matches[0]
+        logger.warning("Invalid follow-up kind '%s' on attempt %d; retrying...", raw, attempt + 1)
+    raise ValueError(f"Invalid follow-up kind after retry: '{raw}'")
+
+
 def panel_names(panel: dict) -> List[str]:
     """Extract all valid panel member names from the panel dict."""
     names: List[str] = []

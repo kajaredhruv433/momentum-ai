@@ -68,7 +68,7 @@ export default function DashboardHome() {
                         Welcome back, {userName}!
                     </h1>
                     <p className="text-muted-foreground text-lg mt-1">
-                        Apply to open roles and take multi-panel AI voice interviews powered by EchoSphere.
+                        Apply to open roles and take multi-panel AI voice interviews powered by Momentum.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -89,7 +89,7 @@ export default function DashboardHome() {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Radio className="h-5 w-5 text-emerald-500 animate-pulse" />
-                                    <CardTitle>EchoSphere AI Voice Interviews</CardTitle>
+                                    <CardTitle>Momentum AI Voice Interviews</CardTitle>
                                 </div>
                                 <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 font-bold">
                                     Live Multi-Panel

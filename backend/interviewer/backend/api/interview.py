@@ -1,7 +1,7 @@
 """
 interview.py
 
-REST API endpoints for the EchoSphere AI Interview Platform.
+REST API endpoints for the Momentum AI Interview Platform.
 Requirement 46:
 - POST /api/interviews
 - GET  /api/interviews/{interview_id}
@@ -407,15 +407,10 @@ def submit_answer(interview_id: str, request: CandidateAnswerRequest) -> Dict[st
 @router.get("/interview/{interview_id}/report")  # Compatibility alias
 def get_report(interview_id: str) -> Dict[str, Any]:
     """
-    Retrieve final candidate evaluation report once interview closing speech is complete.
+    Candidate sessions must not retrieve the recruiter evaluation report.
+    Recruiter dashboards use the persisted application/session report endpoints.
     """
-    rep = _handle_call(controller.report, interview_id)
-    if rep is None:
-        raise HTTPException(
-            status_code=409,
-            detail="The evaluation report is not ready yet. It will generate after the closing speech finishes.",
-        )
-    return rep
+    raise HTTPException(status_code=403, detail="Evaluation reports are available only to recruiters.")
 
 
 # ============================================================================

@@ -145,6 +145,16 @@ class InterviewController:
                 member_details = member
                 break
 
+        report = state.get("report") or None
+        candidate_report = None
+        if isinstance(report, dict):
+            # Candidates may see assessment insights and scores, but never the
+            # hiring recommendation or recruiter-only rationale.
+            candidate_report = {
+                key: value for key, value in report.items()
+                if key not in {"final_recommendation", "hire_reasons", "reject_reasons"}
+            }
+
         return {
             "interview_id": state["_id"],
             "status": state.get("status", "in_progress"),
@@ -163,8 +173,10 @@ class InterviewController:
             "elapsed_time": timer.elapsed_time,
             "base_time": timer.base_time,
             "extended_time": timer.extended_time,
-            "report_ready": bool(state.get("report")),
-            "report": state.get("report"),
+            # Evaluation reports are recruiter-only data. Candidate-facing state
+            # exposes completion without ever returning the report payload.
+            "report_ready": bool(candidate_report),
+            "report": candidate_report,
             "candidate_profile": state.get("candidate_profile"),
             "company_details": state.get("company_details"),
             "closing": state.get("closing"),
@@ -610,7 +622,7 @@ class InterviewController:
         state["interview_phase"] = "completed"
         self._save_state(state)
 
-        self._broadcast(interview_id, "report_ready", {"report": report_data})
+        self._broadcast(interview_id, "report_ready", {"status": "completed"})
         self._broadcast(interview_id, "stage_changed", {"stage": COMPLETED})
         try:
             mongo.save_interview_event(interview_id, "interview_completed", {"report": report_data})

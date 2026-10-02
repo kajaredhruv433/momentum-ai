@@ -1,7 +1,7 @@
 """
 prompts.py
 
-Central prompt repository for the EchoSphere AI Interview Platform.
+Central prompt repository for the Momentum AI Interview Platform.
 All prompts used by the interview pipeline live here.
 Python stage files import these prompts rather than embedding prompt strings directly inside their logic.
 """
@@ -260,6 +260,61 @@ Example Output:
 "You mentioned using Redis and PostgreSQL in your recent e-commerce project. How did you handle cache invalidation to ensure users never saw stale pricing or inventory during flash sales?"
 """
 
+NORMAL_CONTINUE_KIND_PROMPT = """You selected CONTINUE for the NORMAL stage. Choose exactly one next-question route.
+
+Interview history:
+{question_answer_history}
+Latest candidate response:
+{last_candidate_response}
+Candidate profile:
+{candidate_profile}
+
+Routes:
+- CLARIFICATION: deepen a previous vague or incomplete answer.
+- PROJECT: ask about a project listed in the candidate profile.
+- AREA: ask a fresh question from an available interview area.
+
+Return ONLY one word: CLARIFICATION, PROJECT, or AREA."""
+
+NORMAL_CLARIFICATION_SELECTION_PROMPT = """Select the previous question and answer that most needs clarification.
+Question and answer history:
+{question_answer_history}
+Return ONLY its question_id, or its zero-based index if no id exists."""
+
+NORMAL_PROJECT_SELECTION_PROMPT = """Select the most valuable candidate project to validate next.
+Candidate projects:
+{projects}
+Interview history:
+{question_answer_history}
+Return ONLY the exact project name or title."""
+
+NORMAL_AREA_SELECTION_PROMPT = """Select the next fresh interview area.
+Available areas: {areas_to_cover}
+Covered areas: {covered_areas}
+Interview history: {question_answer_history}
+Return ONLY one exact area from the available areas."""
+
+NORMAL_CLARIFICATION_QUESTION_PROMPT = """Generate one natural spoken NORMAL-stage clarification question.
+Selected previous question and answer:
+{selected_qa}
+Full history:
+{question_answer_history}
+Candidate profile:
+{candidate_profile}
+Ask for concrete detail, reasoning, trade-offs, ownership, or an example. Do not repeat the original question.
+Return ONLY the question text."""
+
+NORMAL_PROJECT_QUESTION_PROMPT = """Generate one natural spoken NORMAL-stage question about this candidate project:
+{selected_project}
+Candidate profile: {candidate_profile}
+Interview history: {question_answer_history}
+Ask for evidence of contribution, design decisions, implementation, or outcomes. Return ONLY the question text."""
+
+NORMAL_AREA_QUESTION_PROMPT = """Generate one natural spoken NORMAL-stage question for the fresh area: {selected_area}
+Candidate profile: {candidate_profile}
+Interview history: {question_answer_history}
+Ask a new core competency question and avoid duplicating previous questions. Return ONLY the question text."""
+
 
 # ============================================================================
 # 10. NORMAL STAGE - PANEL SELECTION FOR QUESTION
@@ -408,6 +463,34 @@ CRITICAL GUIDELINES:
 Example Output:
 "In your distributed architecture, suppose a sudden 10x traffic spike causes your primary message queue to back up and downstream worker nodes begin timing out intermittently. How would you design backpressure and rate limiting so the core service remains available without dropping mission-critical events?"
 """
+
+EXTENDED_CONTINUE_KIND_PROMPT = """You selected CONTINUE for the EXTENDED stage. Choose exactly one next-question route.
+Interview history: {question_answer_history}
+Latest candidate response: {last_candidate_response}
+Candidate profile: {candidate_profile}
+Routes: CLARIFICATION (deepen a previous answer), PROJECT (challenge a listed project), AREA (choose a fresh area).
+Return ONLY one word: CLARIFICATION, PROJECT, or AREA."""
+
+EXTENDED_CLARIFICATION_SELECTION_PROMPT = NORMAL_CLARIFICATION_SELECTION_PROMPT
+EXTENDED_PROJECT_SELECTION_PROMPT = NORMAL_PROJECT_SELECTION_PROMPT
+EXTENDED_AREA_SELECTION_PROMPT = NORMAL_AREA_SELECTION_PROMPT
+
+EXTENDED_CLARIFICATION_QUESTION_PROMPT = """Generate one difficult, production-grade EXTENDED-stage clarification question.
+Selected previous question and answer: {selected_qa}
+Full history: {question_answer_history}
+Candidate profile: {candidate_profile}
+Probe failure modes, trade-offs, scalability, observability, consistency, or recovery. Return ONLY one spoken question."""
+
+EXTENDED_PROJECT_QUESTION_PROMPT = """Generate one difficult, production-grade EXTENDED-stage question about this project:
+{selected_project}
+Candidate profile: {candidate_profile}
+Interview history: {question_answer_history}
+Challenge architecture, scale, failure recovery, security, and operational trade-offs. Return ONLY one spoken question."""
+
+EXTENDED_AREA_QUESTION_PROMPT = """Generate one difficult, production-grade EXTENDED-stage question for this fresh area: {selected_area}
+Candidate profile: {candidate_profile}
+Interview history: {question_answer_history}
+Probe advanced architecture, production failure modes, scale, and trade-offs. Return ONLY one spoken question."""
 
 
 # ============================================================================
@@ -657,6 +740,8 @@ Return ONLY valid JSON using this structure:
   "technical_score": 0,
   "communication_score": 0,
   "problem_solving_score": 0,
+  "language_skills": [],
+  "basic_insights": [],
   "strengths": [],
   "concerns": [],
   "hire_reasons": [],

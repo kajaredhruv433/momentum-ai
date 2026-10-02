@@ -54,6 +54,8 @@ NUMERIC_SCORE_FIELDS = [
 ]
 
 LIST_FIELDS = [
+    "language_skills",
+    "basic_insights",
     "strengths",
     "concerns",
     "hire_reasons",
@@ -124,6 +126,14 @@ def _build_fallback_report(
         "technical_score": score,
         "communication_score": min(90, score + 2),
         "problem_solving_score": score,
+        "language_skills": [
+            "Communicates technical ideas clearly during the interview.",
+            "Uses relevant technical vocabulary appropriately.",
+        ],
+        "basic_insights": [
+            "Completed the adaptive interview and responded across the evaluated areas.",
+            "The assessment is based on the interview transcript and candidate profile.",
+        ],
         "strengths": [
             f"Demonstrated practical domain understanding relevant to {role}.",
             f"Actively answered {len(answered)} interview inquiries across technical stages.",

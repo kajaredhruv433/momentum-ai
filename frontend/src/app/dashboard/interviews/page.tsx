@@ -273,7 +273,7 @@ export default function CandidateInterviewsPage() {
                                                 Give Interview
                                             </Button>
                                             <p className="text-[11px] text-center text-muted-foreground leading-tight">
-                                                EchoSphere v9 Voice AI assessment with live interviewer speech.
+                                                Momentum Voice AI assessment with live interviewer speech.
                                             </p>
                                         </div>
                                     </div>

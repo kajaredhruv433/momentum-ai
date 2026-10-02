@@ -1,5 +1,5 @@
 # Momentum: Adaptive Multi-Agent AI Voice Interview & Recruitment Platform
-### Developed for the EchoSphere Competition - Problem Statement 11 (PS11)
+### Developed for the Momentum Competition - Problem Statement 11 (PS11)
 
 ---
 
@@ -34,14 +34,14 @@
 
 ## 1. Platform Vision and Overview
 
-**Momentum** is an autonomous recruitment platform and adaptive multi-agent AI voice interview system developed for the **EchoSphere** competition. Rather than forcing candidates through a static questionnaire or robotic form-filling, our platform deploys a coordinated panel of distinct, specialized AI interviewers who listen, converse, evaluate, and challenge candidates in real time.
+**Momentum** is an autonomous recruitment platform and adaptive multi-agent AI voice interview system developed for the competition. Rather than forcing candidates through a static questionnaire or robotic form-filling, our platform deploys a coordinated panel of distinct, specialized AI interviewers who listen, converse, evaluate, and challenge candidates in real time.
 
 Our portal unifies the entire hiring pipeline:
 - **Recruiters** post technical job openings, define required skills, experience levels, and evaluation parameters.
 - **Candidates** browse open positions and submit applications using their stored resume profile with one click.
 - **Zero-Friction Interview Bridge**: When a candidate initiates an interview, our portal automatically extracts the candidate's resume and job requirements from the database into the interview room without requiring manual re-uploading or form-filling.
 - **Adaptive Multi-Agent Interview**: An AI panel conducts an interactive voice interview powered by **ElevenLabs** for real-time speech-to-text (STT) and neural text-to-speech (TTS), and **`otheragent.py`** as the centralized cognitive reasoning brain for dynamic turn-taking, follow-up probing, system design sketching, and difficulty scaling.
-- **Automated Result Declaration**: Upon completion, a comprehensive evaluation report with granular metrics (match percentage, technical skills, communication, problem-solving) automatically feeds into the recruiter candidate leaderboard, sorted strictly by score for streamlined hiring decisions.
+- **Recruiter-Only Evaluation Reports**: After the closing message finishes, Momentum generates a comprehensive evaluation report and persists it to the recruiter dashboard and candidate application. Candidates see only a completion confirmation; scores, recommendations, and hiring evidence remain recruiter-only.
 
 The interview engine is completely dedicated to real-time conversational adaptability, multi-role turn-taking, and deep cognitive reasoning.
 
@@ -61,10 +61,10 @@ The interview engine is completely dedicated to real-time conversational adaptab
 | **1. Real-Time & Interruptible Voice Interviews** | Powered by **ElevenLabs Realtime STT** (`scribe_v2_realtime`) and **ElevenLabs Neural TTS** (`eleven_flash_v2_5`). Candidate speech is captured via the browser Web Audio API (16 kHz PCM) and streamed over an authenticated server-side WebSocket relay. When a candidate begins speaking (barge-in), the client immediately stops ongoing TTS playback and yields the floor without delay. |
 | **2. Multiple Interviewer Roles & Personalities** | Our panel generator dynamically composes an interview committee of 1 to 5 members tailored to the job requirements and candidate profile. Potential roles include **Technical Interviewer**, **Senior Software Engineer**, **Product Manager**, **Engineering Manager**, **Customer Advocate**, and **HR Manager**, each with distinct personalities, behavioral rules, and mapped neural voices from our 21+ ElevenLabs voice catalog. |
 | **3. Shared Candidate Context Between Roles** | A centralized server-side state machine (`interview_controller.py`) maintains complete session memory. Every question asked, candidate answer, resume section, and evaluation metric is stored in a shared context. When one interviewer hands off to another, the incoming interviewer possesses full awareness of everything discussed previously. |
-| **4. Dynamic Follow-Up Questions** | Our system does not follow a predefined question list. After every candidate response, our reasoning brain (`otheragent.py`) evaluates the substance of the answer against the candidate's resume and job requirements using stage-specific prompts (`prompts.py`), choosing whether to probe deeper into technical trade-offs, explore project claims, or change directions. |
+| **4. Explicit Adaptive Follow-Ups** | After every candidate response, the reasoning brain evaluates the transcript and selects `CLARIFICATION`, `PROJECT`, or `AREA`, then generates a route-specific question from the transcript, candidate projects, or remaining interview areas. |
 | **5. Controlled Interviewer Turn-Taking** | After each response, our reasoning engine determines which panel member should speak next based on their domain expertise and the topic being probed. The system passes the virtual floor seamlessly, ensuring natural committee conversation without overlapping voices. |
 | **6. Role-Play & Scenario-Based Questions** | Panel members pose contextual scenarios (e.g., handling production outages, designing scalable architectures, balancing business impact with engineering speed, and addressing customer needs). The system also features an interactive System Design Canvas for real-time architecture diagrams. |
-| **7. Difficulty Adjustment Based on Performance** | Structured three-stage progression: **Normal Stage** (core competencies and project validation) -> **Extended Stage** (deeper questions probing trade-offs, edge cases, failure recovery, and architectural scalability) -> **Final Stage** (strictly one decisive, high-complexity question for top candidates). |
+| **7. Difficulty Adjustment Based on Performance** | **NORMAL** covers core competencies, projects, fresh areas, clarification, and an optional system-design drawing; **EXTENDED** removes drawing and increases difficulty with production failures, trade-offs, scalability, and recovery; **FINAL** permits one decisive high-complexity question for exceptionally strong candidates. |
 | **8. Identification of Vague or Contradictory Answers** | Our reasoning engine analyzes candidate responses against known engineering principles and previously stated claims. If an answer lacks concrete implementation details, contradicts an earlier response, or dodges a key requirement, the panel generates targeted follow-up prompts to address the gap. |
 | **9. Evidence-Based Feedback Linked to Transcript** | The post-interview evaluation report synthesizes exact quotes, timestamps, and question-answer pairs directly from the transcript, providing objective evidence for strengths, concerns, hire reasons, and reject reasons. |
 | **10. Structured Final Assessment** | Generates a validated multi-dimensional scorecard: overall match percentage, job role match, skills match, experience match, qualification match, technical score, communication score, problem-solving score, and an actionable hiring recommendation (`Strong Hire`, `Hire`, `Consider`, `Do Not Hire`). |
@@ -167,7 +167,7 @@ flowchart TD
         GROQ["Groq LPU (Prompts <= 7,500 tokens, Fast Conversational Turns)"]
         GEMINI["Google AI Studio Gemini (Prompts > 7,500 tokens, Large Context & Reports)"]
         ROTATION["Dynamic Multi-Key Token Bucket Rotation (Up to 20 Keys)"]
-        PROMPTS["3 Stage Prompts in prompts.py (Normal, Extended, Final)"]
+        PROMPTS["Stage Prompts in prompts.py (Normal, Extended, Final + Follow-Up Routes)"]
     end
 
     subgraph Storage ["Persistent Storage Layer"]
@@ -295,14 +295,16 @@ The backend maintains the authoritative start timestamp and broadcasts countdown
        |
        +---> Candidate answers via mic (ElevenLabs STT) or text
        +---> Groq evaluates: CONTINUE, CONCLUDE, or DRAW
-       |       * CONTINUE -> Topic direction, question pattern, panel member, spoken question, ElevenLabs TTS
+       |       * CONTINUE -> CLARIFICATION, PROJECT, or AREA route
+       |                    -> Select context -> Generate question -> Select panel member -> ElevenLabs TTS
        |       * DRAW     -> System Design Canvas question
-       |       * CONCLUDE -> Early conclusion if candidate answers prove completely inadequate
+       |       * CONCLUDE -> Closing message; no further candidate response is requested
        v
 [ EXTENDED STAGE ] (Base Time <= Elapsed < Extended Time, default 45 min)
        |
-       +---> Deeper questions probing architecture, scalability, edge cases, and trade-offs
-       +---> Performance evaluation decides whether to continue or conclude
+       +---> Groq evaluates: CONTINUE or CONCLUDE
+       +---> CONTINUE -> CLARIFICATION, PROJECT, or AREA route
+       +---> Difficult questions probe architecture, scalability, edge cases, and trade-offs
        v
 [ FINAL STAGE ] (Elapsed >= Extended Time)
        |
@@ -317,26 +319,27 @@ The backend maintains the authoritative start timestamp and broadcasts countdown
 [ EVALUATION REPORT STAGE ]
        |
        +---> Full transcript, answers, and canvas diagrams evaluated against job criteria via Gemini
-       +---> Validated JSON report persisted to MongoDB and linked to candidate application
+       +---> Validated JSON report persisted to MongoDB and linked to the candidate application
+       +---> Candidate receives completion confirmation only; recruiter dashboard receives the report
 ```
 
 #### 1. Start Stage
 Our system analyzes the job description and candidate resume to formulate an opening greeting and initial question, assigning it to an opening panel member (e.g., HR Manager). The authoritative timer starts upon ElevenLabs audio playback.
 
 #### 2. Normal Stage
-Active while `elapsed_time < base_time` (default 30 minutes). Operates in an adaptive loop: candidate responds -> ElevenLabs STT transcribes -> Reasoning brain decides whether to continue, conclude, or trigger a system design drawing.
+Active while `elapsed_time < base_time` (default 30 minutes). After each answer, the reasoning brain returns `CONTINUE`, `CONCLUDE`, or `DRAW`. On `CONTINUE`, a second prompt selects `CLARIFICATION`, `PROJECT`, or `AREA`; dedicated prompts then select the relevant previous answer, project, or fresh area before generating the next spoken question. `DRAW` is available only in this stage and opens the system-design canvas.
 
 #### 3. Extended Stage
-Active while `base_time <= elapsed_time < extended_time` (default 45 minutes). The interview increases in rigor, probing production debugging, distributed system trade-offs, and failure recovery.
+Active while `base_time <= elapsed_time < extended_time` (default 45 minutes). The reasoning brain decides `CONTINUE` or `CONCLUDE`. `CONTINUE` uses the same `CLARIFICATION`, `PROJECT`, or `AREA` routes, but every generated question is difficult and production-focused. The drawing option is not available in EXTENDED.
 
 #### 4. Final Stage
 Active once extended time is reached. The reasoning engine permits **strictly ONE final question** for top performers. Once answered, the interview concludes unconditionally.
 
 #### 5. Conclusion Stage
-Our system generates a closing message. The closing panel member delivers it via ElevenLabs TTS. The system waits for the `speech-finished` event before generating the final report.
+Our system generates a closing message and selects a panel member to deliver it via ElevenLabs TTS. The system waits for the `speech-finished` event before generating the final report. The candidate then sees only an interview-complete confirmation.
 
 #### 6. Evaluation Report Stage
-Compiles a structured scorecard with numeric scores (0–100) across technical depth, communication, and problem-solving, supported by direct transcript quotes and an explicit recommendation (`Strong Hire`, `Hire`, `Consider`, `Do Not Hire`).
+Compiles a structured scorecard with numeric scores (0–100) across technical depth, communication, and problem-solving, supported by transcript evidence and an explicit recommendation (`Strong Hire`, `Hire`, `Consider`, `Do Not Hire`). The report is stored for recruiter review and is not returned in candidate-facing state, WebSocket events, or the candidate report endpoint.
 
 ---
 
@@ -362,10 +365,10 @@ Momentum incorporates an interactive architectural sketch pad for technical eval
 | **Dynamic Panel Generator** | Evaluates the job description and candidate profile to construct a tailored interview panel of 1 to 5 fictional personas with distinct roles, seniorities, evaluation criteria, and behavioral rules (`panel.py`). |
 | **Voice Catalog & Persona Mapper** | Maps panel members to distinct ElevenLabs neural voices with specific genders, accents (American, British, Australian), and vocal tones (warm, analytical, authoritative, pragmatic) (`voice.py`). |
 | **ElevenLabs STT Voice Pipeline** | Manages real-time audio capture from the browser Web Audio API via WebSocket relay (`/api/interviews/{id}/stt`), streaming 16kHz PCM audio to ElevenLabs Realtime STT (`scribe_v2_realtime`), tracking partial transcripts, and committing on silence. |
-| **Stage Question Generation Engine** | Powered directly by `otheragent.py` using 3 stage-specific prompts in `prompts.py` (Normal, Extended, Final) to formulate natural spoken questions directly. |
+| **Stage Question Generation Engine** | Powered by `otheragent.py` and centralized prompts in `prompts.py`. NORMAL and EXTENDED have dedicated `CLARIFICATION`, `PROJECT`, and `AREA` routing, selection, and question-generation prompts; FINAL has its decisive-question prompts. |
 | **ElevenLabs TTS Audio Dispatcher** | Synthesizes and streams high-fidelity neural MP3 audio matching the active interviewer's persona voice ID using `eleven_flash_v2_5` (`services/elevenlabs/tts.py`). |
 | **Structured Evaluation & Scoring Engine** | Parses full interview transcripts, validates schema integrity, normalizes multi-dimensional scores (0-100), extracts transcript-backed strengths and concerns, and assigns hiring recommendations (`report.py`). |
-| **Database Persistence Layer** | Utilizes MongoDB as the primary source of truth for jobs, candidates, interview states, answers, and evaluation reports. Utilizes Qdrant Cloud for semantic resume chunk indexing. |
+| **Database Persistence Layer** | Utilizes MongoDB as the primary source of truth for jobs, candidates, interview states, answers, canvas analyses, and recruiter-only evaluation reports. Utilizes Qdrant Cloud for semantic resume chunk indexing. |
 
 ---
 
@@ -398,7 +401,7 @@ While the AI voice interview engine delivers autonomous evaluation intelligence,
    Candidates verify their equipment before entering the room using an interactive device check with a live webcam preview and a real-time Web Audio API microphone volume meter.
 
 5. **Recruiter Leaderboard & Ranked Results**:
-   Once an interview concludes, the candidate's application is updated with match scores and reports. Recruiters access a dedicated dashboard (`/recruiter/dashboard/candidates`) where all interviewed candidates are arranged in strictly descending order of their overall match score.
+   Once the closing speech finishes, the report is generated and the candidate's application is updated with match scores, recommendation, and recruiter-only report evidence. Recruiters access a dedicated dashboard (`/recruiter/dashboard/candidates`) where interviewed candidates are arranged in descending order of overall match score. Candidates receive only a completion confirmation.
 
 6. **Individual & Batch Hiring**:
    Recruiters review evaluation evidence, examine score breakdowns, and mark candidates as `Hired` individually or in batches.

@@ -134,6 +134,11 @@ export default function App() {
       setMicVolume(level);
     };
 
+    service.onStatusCallback = (status) => {
+      setMicStatus(status);
+      if (status !== 'Connected') console.warn('[STT]', status);
+    };
+
     service.onBargeInCallback = () => {
       console.info('⚡ Interviewer interrupted by candidate speech!');
       setWasInterrupted(true);
@@ -326,21 +331,14 @@ export default function App() {
           reportRequested = true;
           try {
             const finalStatus = await api.speechFinished(interviewId);
-            if (finalStatus?.report) {
-              setInterviewState((prev) => ({
-                ...prev,
-                ...finalStatus,
-                report: finalStatus.report,
-                stage: 'COMPLETED',
-              }));
-              setScreen('REPORT');
-            }
+            setInterviewState((prev) => ({ ...prev, ...finalStatus, stage: 'COMPLETED' }));
+            setScreen('REPORT');
           } catch (e) {
             console.warn('Error finishing closing speech / generating report:', e);
             try {
               const rep = await api.getReport(interviewId);
               if (rep) {
-                setInterviewState((prev) => ({ ...prev, report: rep, stage: 'COMPLETED' }));
+                setInterviewState((prev) => ({ ...prev, stage: 'COMPLETED' }));
                 setScreen('REPORT');
               }
             } catch (_) {}
@@ -364,24 +362,9 @@ export default function App() {
         );
       });
 
-      ws.on('report_ready', (data) => {
-        if (data?.report) {
-          setInterviewState((prev) => ({ ...prev, report: data.report, stage: 'COMPLETED' }));
-          setScreen('REPORT');
-          if (urlParams.applicationId) {
-            fetch(`/api/applications/${urlParams.applicationId}/report`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                report: data.report,
-                matchScore: data.report.overall_match_percentage,
-                technicalScore: data.report.technical_score,
-                communicationScore: data.report.communication_score,
-                recommendation: data.report.final_recommendation,
-              }),
-            }).catch((e) => console.warn('App report sync warning:', e));
-          }
-        }
+      ws.on('report_ready', () => {
+        setInterviewState((prev) => ({ ...prev, stage: 'COMPLETED' }));
+        setScreen('REPORT');
       });
 
       // 4. Concurrently initialize Microphone & ElevenLabs RTC in background (non-blocking!)
@@ -471,53 +454,14 @@ export default function App() {
       liveTranscriptRef.current = '';
 
       if (updated.stage === 'COMPLETED' || updated.report) {
-        setInterviewState((prev) => ({ ...prev, report: updated.report, stage: 'COMPLETED' }));
+        setInterviewState((prev) => ({ ...prev, stage: 'COMPLETED' }));
         setScreen('REPORT');
       } else if (updated.action === 'CONCLUDE' || updated.stage === 'CONCLUDING' || updated.stage === 'WAITING_FOR_CLOSING_SPEECH') {
-        const closingMsg = updated.closing?.message || 'Thank you for your time today. That concludes the interview.';
-        const closingMember = updated.closing?.panel_member || updated.selected_panel_member || 'Interviewer';
-        const closingGender = updated.closing?.panel_member_details?.gender || 'Female';
-
-        let done = false;
-        const triggerFinished = async () => {
-          if (done) return;
-          done = true;
-          try {
-            const res = await api.speechFinished(interviewId);
-            if (res?.report) {
-              setInterviewState((prev) => ({ ...prev, ...res, report: res.report, stage: 'COMPLETED' }));
-              setScreen('REPORT');
-            }
-          } catch (err) {
-            console.warn('Closing speech notify error:', err);
-          }
-        };
-
-        const timer = setTimeout(triggerFinished, 8000);
-        voiceRef.current?.speakPersonaMessage(
-          closingMsg,
-          closingMember,
-          closingGender,
-          () => {
-            clearTimeout(timer);
-            triggerFinished();
-          },
-          false,
-          updated.closing?.panel_member_details
-        );
+        // closing_started is delivered over WebSocket. Its handler owns the
+        // single closing TTS call and the speech-finished report gate.
       } else if (updated.current_question && updated.selected_panel_member) {
-        // Speak as soon as the question is generated
-        voiceRef.current?.speakPersonaMessage(
-          updated.current_question,
-          updated.selected_panel_member,
-          updated.panel_member_details?.gender || 'Female',
-          () => {
-            // Once interviewer finishes speaking the next question, prime mic to listen fresh
-            voiceRef.current?.startListening(null, true);
-          },
-          false,
-          updated.panel_member_details
-        );
+        // speaker_changed is delivered over WebSocket. Its handler owns the
+        // single question TTS call; do not speak the HTTP response as well.
       }
     } catch (err) {
       console.error('Answer submission error:', err);
@@ -544,53 +488,14 @@ export default function App() {
       setInterviewState(updated);
       interviewStateRef.current = updated;
 
-      const closingMsg = updated.closing?.message || 'Thank you for your time today. That concludes the interview.';
-      const closingMember = updated.closing?.panel_member || 'Interviewer';
-      const closingGender = updated.closing?.panel_member_details?.gender || 'Female';
-
-      let done = false;
-      const finishAndShowReport = async () => {
-        if (done) return;
-        done = true;
-        try {
-          const res = await api.speechFinished(interviewId);
-          if (res?.report) {
-            setInterviewState((prev) => ({ ...prev, ...res, report: res.report, stage: 'COMPLETED' }));
-            setScreen('REPORT');
-          }
-        } catch (e) {
-          console.warn('Finish after manual conclude error:', e);
-          try {
-            const rep = await api.getReport(interviewId);
-            if (rep) {
-              setInterviewState((prev) => ({ ...prev, report: rep, stage: 'COMPLETED' }));
-              setScreen('REPORT');
-            }
-          } catch (_) {}
-        }
-      };
-
-      const fallbackTimer = setTimeout(finishAndShowReport, 7000);
-
-      voiceRef.current?.speakPersonaMessage(
-        closingMsg,
-        closingMember,
-        closingGender,
-        () => {
-          clearTimeout(fallbackTimer);
-          finishAndShowReport();
-        },
-        false,
-        updated.closing?.panel_member_details || updated.panel_member_details
-      );
+      // The WebSocket closing_started handler owns closing TTS and report
+      // generation. This HTTP response must never start a second audio call.
     } catch (err) {
       console.warn('Manual conclusion failed:', err);
       try {
         const res = await api.speechFinished(interviewId);
-        if (res?.report) {
-          setInterviewState((prev) => ({ ...prev, ...res, report: res.report, stage: 'COMPLETED' }));
-          setScreen('REPORT');
-        }
+        setInterviewState((prev) => ({ ...prev, ...res, stage: 'COMPLETED' }));
+        setScreen('REPORT');
       } catch (_) {}
     } finally {
       setLoadingAnswer(false);
@@ -668,7 +573,7 @@ export default function App() {
             <Radio size={22} />
           </div>
           <div>
-            <h1>EchoSphere</h1>
+            <h1>Momentum</h1>
             <p className="brand-subtitle">State-of-the-Art Multi-Panel AI Interview Platform</p>
           </div>
         </div>

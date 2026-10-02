@@ -1,7 +1,7 @@
 """
 timer.py
 
-Authoritative server-side timer for the EchoSphere AI Interview Platform.
+Authoritative server-side timer for the Momentum AI Interview Platform.
 Tracks interview start timestamp, base duration, extended duration, and elapsed time.
 The frontend displays the timer, but the backend decides all stage transitions.
 """

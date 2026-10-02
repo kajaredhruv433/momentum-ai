@@ -1,7 +1,7 @@
 """
 schemas.py
 
-Pydantic data models for the EchoSphere AI Interview Platform API requests,
+Pydantic data models for the Momentum AI Interview Platform API requests,
 responses, state serialization, candidate answers, and final evaluation reports.
 """
 from __future__ import annotations

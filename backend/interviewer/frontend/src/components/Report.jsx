@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, CheckCircle2, AlertTriangle, UserCheck, XCircle, RotateCcw, Briefcase, User, PenLine } from 'lucide-react';
+import { Award, CheckCircle2, AlertTriangle, Briefcase, PenLine } from 'lucide-react';
 
 export default function Report({ report, candidateInfo, companyDetails, canvasSubmissions = [], onReset }) {
   if (!report) {
@@ -13,21 +13,6 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
       </div>
     );
   }
-
-  const rec = report.final_recommendation || 'Consider';
-  const getRecBadge = (recommendation) => {
-    switch (recommendation) {
-      case 'Strong Hire':
-        return { bg: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '#10b981' };
-      case 'Hire':
-        return { bg: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '#3b82f6' };
-      case 'Consider':
-        return { bg: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '#f59e0b' };
-      default:
-        return { bg: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '#ef4444' };
-    }
-  };
-  const recBadge = getRecBadge(rec);
 
   const overallPct = Math.max(0, Math.min(100, Math.round(report.overall_match_percentage ?? 0)));
 
@@ -63,7 +48,7 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Final Evaluation Report
+              Interview Feedback Report
             </span>
             {companyName && (
               <span className="badge badge-neutral" style={{ fontSize: '0.75rem' }}>
@@ -75,7 +60,7 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span>{candidateName}</span>
             <span style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-              — Evaluation Assessment
+              — Candidate Feedback
             </span>
           </h2>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
@@ -199,31 +184,19 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
             </ul>
           </div>
 
-          {/* Hire & Reject Reasons Split */}
+          {/* Candidate-facing language and basic insights. Hiring status and
+              recruiter decision rationale are intentionally omitted. */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div className="card" style={{ padding: '16px' }}>
-              <h5 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                <UserCheck size={14} /> Reasons to Hire
-              </h5>
+              <h5 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#60a5fa', marginBottom: '8px' }}>Language Skills</h5>
               <ul style={{ paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                {(report.hire_reasons && report.hire_reasons.length > 0) ? (
-                  report.hire_reasons.map((h, idx) => <li key={idx}>{h}</li>)
-                ) : (
-                  <li>Strong baseline alignment with the role technical requirements.</li>
-                )}
+                {(report.language_skills || []).map((item, idx) => <li key={idx}>{item}</li>)}
               </ul>
             </div>
-
             <div className="card" style={{ padding: '16px' }}>
-              <h5 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                <XCircle size={14} /> Risks / Rejection Rationale
-              </h5>
+              <h5 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#c4b5fd', marginBottom: '8px' }}>Basic Insights</h5>
               <ul style={{ paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                {(report.reject_reasons && report.reject_reasons.length > 0) ? (
-                  report.reject_reasons.map((r, idx) => <li key={idx}>{r}</li>)
-                ) : (
-                  <li>None noted based on current evaluation criteria.</li>
-                )}
+                {(report.basic_insights || []).map((item, idx) => <li key={idx}>{item}</li>)}
               </ul>
             </div>
           </div>
@@ -311,7 +284,7 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
               style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', fontWeight: 700 }}
             >
               <Briefcase size={16} />
-              <span>Back to Candidate Dashboard</span>
+              <span>Back to Available Jobs</span>
             </a>
           </div>
         </div>

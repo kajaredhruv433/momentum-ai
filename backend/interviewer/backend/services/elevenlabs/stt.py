@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from urllib.parse import urlencode
 
 import websockets
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 def _url() -> str:
@@ -25,7 +28,13 @@ async def relay_realtime_stt(client: WebSocket) -> None:
     if not api_key:
         await client.send_json({"type": "error", "message": "ELEVENLABS_API_KEY is not configured"})
         return
-    async with websockets.connect(_url(), additional_headers={"xi-api-key": api_key}, max_size=None) as eleven:
+    logger.info("Opening ElevenLabs realtime STT session")
+    try:
+        eleven_context = websockets.connect(_url(), additional_headers={"xi-api-key": api_key}, max_size=None)
+    except TypeError:
+        # Compatibility with older websockets releases.
+        eleven_context = websockets.connect(_url(), extra_headers={"xi-api-key": api_key}, max_size=None)
+    async with eleven_context as eleven:
         async def upstream() -> None:
             while True:
                 event = await client.receive_json()
@@ -45,6 +54,13 @@ async def relay_realtime_stt(client: WebSocket) -> None:
                     await client.send_json({"type": "error", "message": data.get("error", data)})
         tasks = [asyncio.create_task(upstream()), asyncio.create_task(downstream())]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if task.exception():
+                logger.exception("Realtime STT relay stopped", exc_info=task.exception())
+                try:
+                    await client.send_json({"type": "error", "message": "Realtime speech recognition stopped"})
+                except Exception:
+                    pass
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)

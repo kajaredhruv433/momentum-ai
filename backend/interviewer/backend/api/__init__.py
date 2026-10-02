@@ -1,7 +1,7 @@
 """
 api package
 
-Exposes the REST and WebSocket routers for the EchoSphere platform.
+Exposes the REST and WebSocket routers for the Momentum platform.
 """
 from __future__ import annotations
 

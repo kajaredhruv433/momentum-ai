@@ -1,7 +1,7 @@
 """
 state.py
 
-Canonical state machine definitions for the EchoSphere AI Interview Platform.
+Canonical state machine definitions for the Momentum AI Interview Platform.
 The interview controller owns the authoritative state machine; the frontend is never the source of truth.
 """
 from __future__ import annotations

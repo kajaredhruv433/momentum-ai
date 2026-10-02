@@ -129,7 +129,7 @@ export default function JobsPage() {
         const appId = encodeURIComponent(applicationId || "")
         const jobId = encodeURIComponent(job.id)
 
-        // Launch the EchoSphere v9 interview directly
+        // Launch the Momentum interview directly
         window.location.href = `http://localhost:8000/?jobId=${jobId}&candidateEmail=${email}&candidateId=${uid}&applicationId=${appId}`
     }
 

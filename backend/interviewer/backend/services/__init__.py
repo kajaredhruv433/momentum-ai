@@ -1,1 +1,1 @@
-"""Replaceable external-service integrations for EchoSphere."""
+"""Replaceable external-service integrations for Momentum."""

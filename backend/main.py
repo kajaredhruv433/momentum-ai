@@ -31,7 +31,7 @@ from backend.routers import (
 )
 from backend.config import PORT, HOST
 
-# Import EchoSphere authoritative interview platform routers & controllers
+# Import Momentum authoritative interview platform routers & controllers
 try:
     from api.interview import router as v9_interview_router
     from api.candidate import router as v9_candidate_router
@@ -44,8 +44,8 @@ except ImportError as err:
     v9_ws_manager = None
 
 app = FastAPI(
-    title="Momentum & EchoSphere Unified API",
-    description="Python FastAPI backend powering Momentum recruitment portal and EchoSphere AI interview engine",
+    title="Momentum Unified API",
+    description="Python FastAPI backend powering the Momentum recruitment portal and AI interview engine",
     version="2.0.0"
 )
 
@@ -58,7 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Wire EchoSphere v9 WebSocket manager on startup
+# Wire the interview WebSocket manager on startup
 @app.on_event("startup")
 async def on_startup():
     if v9_ws_manager:
@@ -74,7 +74,7 @@ app.include_router(resume.router)
 app.include_router(problems.router)
 app.include_router(interviews.router)
 
-# Include EchoSphere interview routers
+# Include interview routers
 if v9_interview_router:
     app.include_router(v9_interview_router)
 if v9_candidate_router:
@@ -86,10 +86,10 @@ if v9_websocket_router:
 async def health_check():
     return {
         "status": "healthy",
-        "service": "Momentum & EchoSphere Unified Backend"
+        "service": "Momentum Unified Backend"
     }
 
-# Serve EchoSphere Interview frontend directly
+# Serve the interview frontend directly
 @app.get("/interview-app")
 @app.get("/interview-app/{path:path}")
 def serve_interview_app(path: str = ""):
@@ -103,7 +103,7 @@ def serve_interview_app(path: str = ""):
                 "Expires": "0",
             },
         )
-    return {"status": "ok", "message": "EchoSphere frontend not built"}
+    return {"status": "ok", "message": "Momentum frontend not built"}
 
 if INTERVIEWER_FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=INTERVIEWER_FRONTEND_DIST / "assets"), name="interviewer_assets")

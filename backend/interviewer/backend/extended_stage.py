@@ -18,7 +18,13 @@ try:
     from .otheragent import ask_groq
     from .prompts import (
         EXTENDED_DECISION_PROMPT,
-        EXTENDED_DIRECTION_PROMPT,
+        EXTENDED_CONTINUE_KIND_PROMPT,
+        EXTENDED_CLARIFICATION_SELECTION_PROMPT,
+        EXTENDED_PROJECT_SELECTION_PROMPT,
+        EXTENDED_AREA_SELECTION_PROMPT,
+        EXTENDED_CLARIFICATION_QUESTION_PROMPT,
+        EXTENDED_PROJECT_QUESTION_PROMPT,
+        EXTENDED_AREA_QUESTION_PROMPT,
         EXTENDED_PANEL_SELECTION_PROMPT,
         EXTENDED_STAGE_QUESTION_PROMPT,
     )
@@ -27,13 +33,20 @@ try:
         choose_question_kind,
         clean_text,
         validated_decision,
+        validated_followup_kind,
         validated_panel_member,
     )
 except ImportError:
     from otheragent import ask_groq
     from prompts import (
         EXTENDED_DECISION_PROMPT,
-        EXTENDED_DIRECTION_PROMPT,
+        EXTENDED_CONTINUE_KIND_PROMPT,
+        EXTENDED_CLARIFICATION_SELECTION_PROMPT,
+        EXTENDED_PROJECT_SELECTION_PROMPT,
+        EXTENDED_AREA_SELECTION_PROMPT,
+        EXTENDED_CLARIFICATION_QUESTION_PROMPT,
+        EXTENDED_PROJECT_QUESTION_PROMPT,
+        EXTENDED_AREA_QUESTION_PROMPT,
         EXTENDED_PANEL_SELECTION_PROMPT,
         EXTENDED_STAGE_QUESTION_PROMPT,
     )
@@ -42,6 +55,7 @@ except ImportError:
         choose_question_kind,
         clean_text,
         validated_decision,
+        validated_followup_kind,
         validated_panel_member,
     )
 
@@ -74,33 +88,29 @@ def next_extended_action(
     if decision == "CONCLUDE":
         return {"action": "CONCLUDE"}
 
-    # 2. Topic direction
-    direction_prompt = EXTENDED_DIRECTION_PROMPT.format(
-        question_answer_history=as_json(history),
-        areas_to_cover=as_json(areas_to_cover),
-        candidate_profile=as_json(profile),
-    )
-    selected_area = clean_text(ask_groq(direction_prompt))
-
-    # Determine project vs skill path
-    kind = choose_question_kind(profile, selected_area)
-
-    if kind == "project":
-        candidate_context = as_json(profile.get("projects", []))
-    else:
-        candidate_context = as_json(
-            profile.get("professional", {}).get("skills", [])
-            or profile.get("skills", [])
-        )
-
-    # 3. Stage 2 Direct Difficult Question Generation Prompt
-    q_prompt = EXTENDED_STAGE_QUESTION_PROMPT.format(
-        candidate_profile=as_json(profile),
-        candidate_context=candidate_context,
-        selected_area=selected_area,
+    # 2. Explicitly choose clarification, project, or fresh area.
+    kind_prompt = EXTENDED_CONTINUE_KIND_PROMPT.format(
         question_answer_history=as_json(history),
         last_candidate_response=answer,
+        candidate_profile=as_json(profile),
     )
+    route = validated_followup_kind(kind_prompt)
+    selected_area = ""
+    if route == "CLARIFICATION":
+        selected = clean_text(ask_groq(EXTENDED_CLARIFICATION_SELECTION_PROMPT.format(question_answer_history=as_json(history))))
+        selected_entry = next((h for i, h in enumerate(history) if str(h.get("question_id")) == selected or str(i) == selected), history[-1] if history else {})
+        q_prompt = EXTENDED_CLARIFICATION_QUESTION_PROMPT.format(selected_qa=as_json(selected_entry), question_answer_history=as_json(history), candidate_profile=as_json(profile))
+        kind, selected_area = "clarification", selected_entry.get("selected_area") or "Clarification"
+    elif route == "PROJECT":
+        projects = profile.get("projects", []) or []
+        selected_project = clean_text(ask_groq(EXTENDED_PROJECT_SELECTION_PROMPT.format(projects=as_json(projects), question_answer_history=as_json(history))))
+        project = next((p for p in projects if selected_project.casefold() in as_json(p).casefold()), selected_project)
+        q_prompt = EXTENDED_PROJECT_QUESTION_PROMPT.format(selected_project=as_json(project), candidate_profile=as_json(profile), question_answer_history=as_json(history))
+        kind, selected_area = "project", "Candidate Project"
+    else:
+        selected_area = clean_text(ask_groq(EXTENDED_AREA_SELECTION_PROMPT.format(areas_to_cover=as_json(areas_to_cover), covered_areas="[]", question_answer_history=as_json(history))))
+        q_prompt = EXTENDED_AREA_QUESTION_PROMPT.format(selected_area=selected_area, candidate_profile=as_json(profile), question_answer_history=as_json(history))
+        kind = "role_area"
     question = clean_text(ask_groq(q_prompt))
 
     # 4. Select the panel member who should speak this EXTENDED question

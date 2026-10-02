@@ -1,7 +1,7 @@
 /**
  * DrawingCanvas.jsx
  *
- * Self-contained system-design drawing canvas for EchoSphere interview sessions.
+ * Self-contained system-design drawing canvas for Momentum interview sessions.
  * Supports: pen, eraser, rectangle, circle, arrow, text, undo, redo, clear, submit.
  * On submit: converts canvas to PNG, POSTs to /api/interview/{id}/canvas,
  * and displays structured AI diagram analysis inline.
