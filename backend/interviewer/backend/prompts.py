@@ -694,3 +694,73 @@ The recommendation must be one of:
 "Do Not Hire"
 
 Base every score and statement on the provided resume and interview evidence."""
+
+
+# Consolidated stage prompts: one model call decides, generates, and assigns.
+NORMAL_STAGE_PROMPT = """You are the decision and question-generation engine for the NORMAL stage of a live AI interview.
+Make the complete next-interview decision in ONE response.
+
+Role: {role}
+Company requirements: {company_requirements}
+Candidate profile: {candidate_profile}
+Candidate projects: {projects}
+Areas to cover: {areas_to_cover}
+Areas already covered: {covered_areas}
+Available interview panel: {panels}
+Previous interview history: {question_answer_history}
+Candidate's latest response: {last_candidate_response}
+
+Choose CONCLUDE only when the candidate asks to stop, or continuing is no longer useful after repeated severe inconsistency or illogical reasoning. A weak answer or 'I don't know' should lead to another useful question. Choose DRAW when a role-relevant system-design exercise would produce useful evidence. Otherwise choose CONTINUE.
+For CONTINUE, choose exactly one domain: clarification, project, or area. Generate exactly one natural spoken question, avoid repetition, do not invent facts, and select exactly one supplied panel member who best matches the topic.
+
+Return ONLY valid JSON:
+{{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
+or
+{{"status":"continue","question_domain":"draw|clarification|project|area","generated_question":"...","panel":"Exact Panel Member Name"}}
+"""
+
+EXTENDED_STAGE_PROMPT = """You are the decision and question-generation engine for the EXTENDED stage of a live AI interview.
+The planned interview time has ended. Make the complete decision and generate the next question in ONE response.
+
+Role: {role}
+Company requirements: {company_requirements}
+Candidate profile: {candidate_profile}
+Candidate projects: {projects}
+Areas to cover: {areas_to_cover}
+Areas already covered: {covered_areas}
+Available interview panel: {panels}
+Base interview time: {base_time}
+Elapsed interview time: {elapsed_time}
+Previous interview history: {question_answer_history}
+Candidate's latest response: {last_candidate_response}
+
+Choose CONTINUE only when the candidate has demonstrated strong, meaningful performance and another advanced question can produce valuable evidence. Otherwise choose CONCLUDE. If continuing, choose exactly one domain: clarification, project, or area. Generate exactly one difficult production-grade spoken question probing depth, failure modes, scalability, observability, security, recovery, or trade-offs. Do not invent details or ask multiple questions. Select exactly one supplied panel member; never invent a name.
+
+Return ONLY valid JSON:
+{{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
+or
+{{"status":"continue","question_domain":"clarification|project|area","generated_question":"...","panel":"Exact Panel Member Name"}}
+"""
+
+FINAL_STAGE_PROMPT = """You are the decision and question-generation engine for the FINAL stage of a live AI interview.
+The extended interview time has ended. Decide whether an exceptionally strong candidate deserves exactly ONE final decisive question. After it is answered, the interview ends unconditionally.
+
+Role: {role}
+Company requirements: {company_requirements}
+Candidate profile: {candidate_profile}
+Available interview panel: {panels}
+Areas already covered: {covered_areas}
+Remaining high-value areas: {areas_to_cover}
+Knowledge from previous questions: {knowledge_from_previous_questions}
+Previous interview history: {question_answer_history}
+Candidate's latest response: {last_candidate_response}
+Base interview time: {base_time}
+Elapsed time: {elapsed_time}
+
+Choose CONCLUDE unless the candidate has demonstrated exceptional performance that genuinely justifies one last high-value question. If continuing, generate exactly one comprehensive, high-complexity, evidence-producing question addressing the candidate directly with you/your. Synthesize relevant architecture, reliability, security, business impact, operational risk, prioritization, and trade-offs. Do not include a preamble, answer, hint, scoring, or feedback. Select exactly one supplied panel member with the most relevant expertise.
+
+Return ONLY valid JSON:
+{{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
+or
+{{"status":"continue","question_domain":"final","generated_question":"...","panel":"Exact Panel Member Name"}}
+"""

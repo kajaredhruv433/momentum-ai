@@ -45,6 +45,20 @@ Our portal unifies the entire hiring pipeline:
 
 The interview engine is completely dedicated to real-time conversational adaptability, multi-role turn-taking, and deep cognitive reasoning.
 
+### Current Repository Layout
+
+```text
+backend/
+├── main.py                         # Unified FastAPI app and portal router composition
+├── routers/                        # Recruitment portal APIs (jobs, users, applications, etc.)
+└── interviewer/backend/            # AI interview controller, stages, prompts, voice, and persistence
+frontend/                           # Next.js recruitment portal and recruiter dashboards
+backend/interviewer/frontend/       # Vite interview room and device/canvas experience
+scripts/                            # Data migration, integration, and verification utilities
+```
+
+The development command starts `backend.main:app`, which combines the recruitment APIs with the interviewer APIs and serves the built interview room at `/interview-app`. The root Next.js app runs separately on port 3000 and calls the unified backend at port 8000.
+
 ---
 
 ## 2. Direct Alignment with Problem Statement 11 (PS11)
@@ -61,7 +75,7 @@ The interview engine is completely dedicated to real-time conversational adaptab
 | **1. Real-Time & Interruptible Voice Interviews** | Powered by **ElevenLabs Realtime STT** (`scribe_v2_realtime`) and **ElevenLabs Neural TTS** (`eleven_flash_v2_5`). Candidate speech is captured via the browser Web Audio API (16 kHz PCM) and streamed over an authenticated server-side WebSocket relay. When a candidate begins speaking (barge-in), the client immediately stops ongoing TTS playback and yields the floor without delay. |
 | **2. Multiple Interviewer Roles & Personalities** | Our panel generator dynamically composes an interview committee of 1 to 5 members tailored to the job requirements and candidate profile. Potential roles include **Technical Interviewer**, **Senior Software Engineer**, **Product Manager**, **Engineering Manager**, **Customer Advocate**, and **HR Manager**, each with distinct personalities, behavioral rules, and mapped neural voices from our 21+ ElevenLabs voice catalog. |
 | **3. Shared Candidate Context Between Roles** | A centralized server-side state machine (`interview_controller.py`) maintains complete session memory. Every question asked, candidate answer, resume section, and evaluation metric is stored in a shared context. When one interviewer hands off to another, the incoming interviewer possesses full awareness of everything discussed previously. |
-| **4. Explicit Adaptive Follow-Ups** | After every candidate response, the reasoning brain evaluates the transcript and selects `CLARIFICATION`, `PROJECT`, or `AREA`, then generates a route-specific question from the transcript, candidate projects, or remaining interview areas. |
+| **4. Explicit Adaptive Follow-Ups** | After every candidate response, one consolidated stage prompt evaluates the transcript, chooses `CLARIFICATION`, `PROJECT`, `AREA`, or `DRAW` where applicable, generates the next question, and selects the next panel speaker in the same JSON response. |
 | **5. Controlled Interviewer Turn-Taking** | After each response, our reasoning engine determines which panel member should speak next based on their domain expertise and the topic being probed. The system passes the virtual floor seamlessly, ensuring natural committee conversation without overlapping voices. |
 | **6. Role-Play & Scenario-Based Questions** | Panel members pose contextual scenarios (e.g., handling production outages, designing scalable architectures, balancing business impact with engineering speed, and addressing customer needs). The system also features an interactive System Design Canvas for real-time architecture diagrams. |
 | **7. Difficulty Adjustment Based on Performance** | **NORMAL** covers core competencies, projects, fresh areas, clarification, and an optional system-design drawing; **EXTENDED** removes drawing and increases difficulty with production failures, trade-offs, scalability, and recovery; **FINAL** permits one decisive high-complexity question for exceptionally strong candidates. |
@@ -167,7 +181,7 @@ flowchart TD
         GROQ["Groq LPU (Prompts <= 7,500 tokens, Fast Conversational Turns)"]
         GEMINI["Google AI Studio Gemini (Prompts > 7,500 tokens, Large Context & Reports)"]
         ROTATION["Dynamic Multi-Key Token Bucket Rotation (Up to 20 Keys)"]
-        PROMPTS["Stage Prompts in prompts.py (Normal, Extended, Final + Follow-Up Routes)"]
+        PROMPTS["Centralized single-call stage prompts in prompts.py"]
     end
 
     subgraph Storage ["Persistent Storage Layer"]
@@ -246,8 +260,9 @@ All cognitive decision-making is unified under **`otheragent.py`**, which serves
    - **Prompts <= 7,500 tokens** (conversational turns, dynamic turn-taking, follow-up generation, and canvas analysis): Automatically routed to **Groq** for ultra-fast sub-second LPU inference.
    - **Prompts > 7,500 tokens** (full multi-page resume ingestion, exhaustive interview transcripts, and final structured evaluation reports): Automatically routed to **Google AI Studio (Gemini)** with massive 120k+ TPM throughput.
 
-2. **Direct Spoken Question Generation**:
-   - Rather than generating abstract meta-instructions, `otheragent.py` directly formulates the natural, polite, second-person spoken interview question tailored to the exact lifecycle stage (`Normal`, `Extended`, `Final`), which ElevenLabs TTS immediately synthesizes and delivers.
+2. **Structured Single-Call Stage Decisions**:
+   - `prompts.py` contains `NORMAL_STAGE_PROMPT`, `EXTENDED_STAGE_PROMPT`, and `FINAL_STAGE_PROMPT`. Each returns one strict JSON object containing the action, question domain, generated question, and exact panel member.
+   - The stage handlers parse and validate that response before handing the question to ElevenLabs TTS. This removes the previous decision → route → selection → question → speaker chain and reduces turn latency.
 
 3. **Multi-Key Token Bucket Rotation**:
    - Inside `groqrouter.py` and `geminirouter.py`, our system loads up to 20 API keys from the environment (`GROQ_API_KEY_1..20`, `GEMINI_API_KEY_1..20`).
@@ -294,16 +309,15 @@ The backend maintains the authoritative start timestamp and broadcasts countdown
 [ NORMAL STAGE ] (Elapsed < Base Time, default 30 min)
        |
        +---> Candidate answers via mic (ElevenLabs STT) or text
-       +---> Groq evaluates: CONTINUE, CONCLUDE, or DRAW
-       |       * CONTINUE -> CLARIFICATION, PROJECT, or AREA route
-       |                    -> Select context -> Generate question -> Select panel member -> ElevenLabs TTS
+       +---> One NORMAL stage call returns CONTINUE, CONCLUDE, or DRAW
+       |       * CONTINUE -> domain + question + panel member in one JSON response
        |       * DRAW     -> System Design Canvas question
        |       * CONCLUDE -> Closing message; no further candidate response is requested
        v
 [ EXTENDED STAGE ] (Base Time <= Elapsed < Extended Time, default 45 min)
        |
-       +---> Groq evaluates: CONTINUE or CONCLUDE
-       +---> CONTINUE -> CLARIFICATION, PROJECT, or AREA route
+       +---> One EXTENDED stage call returns CONTINUE or CONCLUDE
+       +---> CONTINUE -> advanced domain + question + panel member in one JSON response
        +---> Difficult questions probe architecture, scalability, edge cases, and trade-offs
        v
 [ FINAL STAGE ] (Elapsed >= Extended Time)
@@ -327,10 +341,10 @@ The backend maintains the authoritative start timestamp and broadcasts countdown
 Our system analyzes the job description and candidate resume to formulate an opening greeting and initial question, assigning it to an opening panel member (e.g., HR Manager). The authoritative timer starts upon ElevenLabs audio playback.
 
 #### 2. Normal Stage
-Active while `elapsed_time < base_time` (default 30 minutes). After each answer, the reasoning brain returns `CONTINUE`, `CONCLUDE`, or `DRAW`. On `CONTINUE`, a second prompt selects `CLARIFICATION`, `PROJECT`, or `AREA`; dedicated prompts then select the relevant previous answer, project, or fresh area before generating the next spoken question. `DRAW` is available only in this stage and opens the system-design canvas.
+Active while `elapsed_time < base_time` (default 30 minutes). After each answer, `NORMAL_STAGE_PROMPT` makes one decision and returns `CONTINUE`, `CONCLUDE`, or `DRAW`. For continuation it also chooses `CLARIFICATION`, `PROJECT`, or `AREA`, writes exactly one question, and selects the speaker. `DRAW` opens the system-design canvas.
 
 #### 3. Extended Stage
-Active while `base_time <= elapsed_time < extended_time` (default 45 minutes). The reasoning brain decides `CONTINUE` or `CONCLUDE`. `CONTINUE` uses the same `CLARIFICATION`, `PROJECT`, or `AREA` routes, but every generated question is difficult and production-focused. The drawing option is not available in EXTENDED.
+Active while `base_time <= elapsed_time < extended_time` (default 45 minutes). `EXTENDED_STAGE_PROMPT` decides `CONTINUE` or `CONCLUDE` and, when continuing, returns one advanced `CLARIFICATION`, `PROJECT`, or `AREA` question plus its speaker. The drawing option is not available in EXTENDED.
 
 #### 4. Final Stage
 Active once extended time is reached. The reasoning engine permits **strictly ONE final question** for top performers. Once answered, the interview concludes unconditionally.
@@ -365,7 +379,7 @@ Momentum incorporates an interactive architectural sketch pad for technical eval
 | **Dynamic Panel Generator** | Evaluates the job description and candidate profile to construct a tailored interview panel of 1 to 5 fictional personas with distinct roles, seniorities, evaluation criteria, and behavioral rules (`panel.py`). |
 | **Voice Catalog & Persona Mapper** | Maps panel members to distinct ElevenLabs neural voices with specific genders, accents (American, British, Australian), and vocal tones (warm, analytical, authoritative, pragmatic) (`voice.py`). |
 | **ElevenLabs STT Voice Pipeline** | Manages real-time audio capture from the browser Web Audio API via WebSocket relay (`/api/interviews/{id}/stt`), streaming 16kHz PCM audio to ElevenLabs Realtime STT (`scribe_v2_realtime`), tracking partial transcripts, and committing on silence. |
-| **Stage Question Generation Engine** | Powered by `otheragent.py` and centralized prompts in `prompts.py`. NORMAL and EXTENDED have dedicated `CLARIFICATION`, `PROJECT`, and `AREA` routing, selection, and question-generation prompts; FINAL has its decisive-question prompts. |
+| **Stage Question Generation Engine** | `normal_stage.py`, `extended_stage.py`, and `final_stage.py` each make one structured prompt call through `stage_utils.prompt_text`, parse it with `repair_json`, validate the action/domain/panel member, and return the next controller action. |
 | **ElevenLabs TTS Audio Dispatcher** | Synthesizes and streams high-fidelity neural MP3 audio matching the active interviewer's persona voice ID using `eleven_flash_v2_5` (`services/elevenlabs/tts.py`). |
 | **Structured Evaluation & Scoring Engine** | Parses full interview transcripts, validates schema integrity, normalizes multi-dimensional scores (0-100), extracts transcript-backed strengths and concerns, and assigns hiring recommendations (`report.py`). |
 | **Database Persistence Layer** | Utilizes MongoDB as the primary source of truth for jobs, candidates, interview states, answers, canvas analyses, and recruiter-only evaluation reports. Utilizes Qdrant Cloud for semantic resume chunk indexing. |
@@ -551,11 +565,31 @@ ALL VERIFICATIONS PASSED SUCCESSFULLY!
 
 ---
 
+### Main Interview API Surface
+
+The unified FastAPI application exposes the following interview routes:
+
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/api/health` | Backend health check |
+| `GET` | `/api/interview/setup-data` or `/api/interviews/setup-data` | Load job, application, and candidate setup data |
+| `POST` | `/api/interviews` | Create and initialize an interview |
+| `GET` | `/api/interviews/{id}` | Read authoritative interview state and timer |
+| `POST` | `/api/interviews/{id}/answer` | Submit a voice or typed candidate answer |
+| `POST` | `/api/interviews/{id}/question-started` | Start the server-side timer when audio begins |
+| `POST` | `/api/interviews/{id}/speech-finished` | Generate the report after closing audio completes |
+| `POST` | `/api/interviews/{id}/canvas` | Submit a base64 canvas drawing for analysis |
+| `GET` | `/api/interviews/{id}/tts` | Generate panel-member TTS audio |
+| `WS` | `/api/interviews/{id}/events` | Receive live interview state and transcript events |
+| `WS` | `/api/interviews/{id}/stt` | Stream microphone audio to realtime STT |
+
+Compatibility aliases under `/api/interview/...` remain available for older clients.
+
 ### System Access Points
 
 | Service | Access URL | Description |
 |---|---|---|
 | **Momentum Web Portal** | `http://localhost:3000` | Candidate job search and recruiter dashboard |
 | **Recruiter Leaderboard** | `http://localhost:3000/recruiter/dashboard/candidates` | Candidates ranked by interview match score with reports |
-| **AI Interviewer Lobby** | `http://127.0.0.1:8000/interview-app` | Pre-flight hardware check and live interview room |
+| **AI Interviewer Lobby** | `http://127.0.0.1:8000/interview-app` | Vite-built pre-flight hardware check, live interview room, transcript, voice controls, and system-design canvas |
 | **FastAPI Swagger Docs** | `http://127.0.0.1:8000/docs` | Interactive API documentation |
