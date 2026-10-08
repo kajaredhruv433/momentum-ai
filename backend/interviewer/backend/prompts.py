@@ -8,7 +8,9 @@ Python stage files import these prompts rather than embedding prompt strings dir
 from __future__ import annotations
 
 # ============================================================================
-# 1. INTERVIEW PREPARATION
+# 1 | INTERVIEW PREPARATION
+# Asked: Identify interview areas from role, company requirements, and profile.
+# Expected response: JSON array of concise evaluation-area strings.
 # ============================================================================
 INTERVIEW_PREP_PROMPT = """You are preparing an interview for this target role: {role}.
 
@@ -32,7 +34,9 @@ Example output:
 
 
 # ============================================================================
-# 2. PANEL SELECTION - AI PANEL CREATION
+# 2 | PANEL CREATION
+# Asked: Create the interview panel and define each member's role and behavior.
+# Expected response: JSON object containing panel_size and panel members.
 # ============================================================================
 PANEL_PROMPT = """
 You are designing an AI interview panel.
@@ -82,7 +86,9 @@ JSON schema:
 
 
 # ============================================================================
-# 3. START STAGE - GREETING & FIRST QUESTION GENERATION
+# 3 | OPENING GREETING AND QUESTION
+# Asked: Generate a welcome followed by a role- and candidate-relevant question.
+# Expected response: Spoken greeting and first interview question.
 # ============================================================================
 START_STAGE_PROMPT = """These are the company details:
 
@@ -104,7 +110,9 @@ Example output:
 
 
 # ============================================================================
-# 4. START STAGE - PANEL SELECTION FOR FIRST QUESTION
+# 4 | OPENING SPEAKER SELECTION
+# Asked: Choose who should ask the generated opening question.
+# Expected response: One exact panel member name.
 # ============================================================================
 START_PANEL_SELECTION_PROMPT = """These are the available interview panel members:
 
@@ -124,7 +132,9 @@ Example output:
 
 
 # ============================================================================
-# 5. NORMAL STAGE - DECISION (CONTINUE / CONCLUDE / DRAW)
+# 5 | NORMAL: DECIDE NEXT ACTION
+# Asked: Continue, conclude, or ask a canvas-based system-design question.
+# Expected response: CONTINUE, CONCLUDE, or DRAW.
 # ============================================================================
 NORMAL_DECISION_PROMPT = """Decide whether the interview should continue or conclude.
 
@@ -156,7 +166,9 @@ CONTINUE"""
 
 
 # ============================================================================
-# 6. NORMAL STAGE - SYSTEM DESIGN / ARCHITECTURE CANVAS QUESTION
+# 5a | NORMAL: CANVAS QUESTION (only after decision DRAW)
+# Asked: Generate a canvas-based architecture design question.
+# Expected response: One spoken question instructing the candidate to draw.
 # ============================================================================
 DRAW_prompt = """Ask the candidate to design and draw a system architecture on the canvas.
 
@@ -174,92 +186,10 @@ Example:
 
 
 # ============================================================================
-# 7. NORMAL STAGE - TOPIC & DIRECTION SELECTION
+# 5b | NORMAL: CHOOSE CONTINUATION ROUTE
+# Asked: Choose whether to clarify, investigate a project, or cover a fresh area.
+# Expected response: CLARIFICATION, PROJECT, or AREA.
 # ============================================================================
-NORMAL_DIRECTION_PROMPT = """Based on the interview so far, choose what should be asked next.
-
-Interview so far:
-
-{question_answer_history}
-
-Areas to cover:
-
-{areas_to_cover}
-
-Candidate profile:
-
-{candidate_profile}
-
-Choose the most valuable next direction based on an uncovered area, candidate project, candidate skill, or meaningful follow-up and if candidate was not able to answer last question start with okay no issue it happens sometime and then start the question.
-
-Return ONLY one concise area/topic.
-
-Example output:
-
-"Distributed Systems" """
-
-
-# ============================================================================
-# 8. NORMAL STAGE - ROLE AREA SELECTION
-# ============================================================================
-ROLE_AREA_PROMPT = """Choose the next uncovered area to evaluate.
-
-Covered areas:
-
-{covered_areas}
-
-Remaining areas:
-
-{remaining_areas}
-
-Candidate profile:
-
-{candidate_profile}
-
-Choose the most important remaining area for the target role.
-
-Return ONLY the area.
-
-Example output:
-
-"Database Scalability" """
-
-
-# ============================================================================
-# 9. NORMAL STAGE - QUESTION GENERATION
-# ============================================================================
-NORMAL_STAGE_QUESTION_PROMPT = """You are an expert technical interviewer conducting the NORMAL stage of a live voice interview with a candidate.
-
-Candidate Profile:
-{candidate_profile}
-
-Candidate Context / Specific Skills or Projects:
-{candidate_context}
-
-Selected Interview Area:
-{selected_area}
-
-Interview Transcript & History So Far:
-{question_answer_history}
-
-Candidate's Latest Response:
-{last_candidate_response}
-
-Your task is to generate the next spoken interview question for the candidate in the NORMAL stage.
-
-CRITICAL GUIDELINES:
-1. Directly address the candidate in the second person ("you" / "your").
-2. Focus on core technical competence, validating actual projects and skills mentioned, and probing real-world problem-solving in the "{selected_area}" domain.
-3. If the candidate successfully answered the previous question, transition smoothly and naturally into this next topic or probe a meaningful nuance of what they shared.
-4. If the candidate struggled or stated they did not know the previous answer, be encouraging, professional, and conversational (e.g., "No problem at all, let's explore another area...") and smoothly introduce this new question.
-5. NEVER include internal meta-commentary, evaluation notes, brackets, or negative criticisms (e.g. do NOT say "As you failed to answer...", "Since the candidate didn't mention...").
-6. The output must be a PURE, natural, highly professional spoken question ready to be read aloud directly to the candidate.
-7. Return ONLY the spoken question text. Do NOT include quotes, interviewer labels, or preambles.
-
-Example Output:
-"You mentioned using Redis and PostgreSQL in your recent e-commerce project. How did you handle cache invalidation to ensure users never saw stale pricing or inventory during flash sales?"
-"""
-
 NORMAL_CONTINUE_KIND_PROMPT = """You selected CONTINUE for the NORMAL stage. Choose exactly one next-question route.
 
 Interview history:
@@ -276,11 +206,21 @@ Routes:
 
 Return ONLY one word: CLARIFICATION, PROJECT, or AREA."""
 
+# ============================================================================
+# 5b-i | NORMAL: SELECT PRIOR ANSWER TO CLARIFY
+# Asked: Identify which prior question and answer most needs clarification.
+# Expected response: Question ID or zero-based history index.
+# ============================================================================
 NORMAL_CLARIFICATION_SELECTION_PROMPT = """Select the previous question and answer that most needs clarification.
 Question and answer history:
 {question_answer_history}
 Return ONLY its question_id, or its zero-based index if no id exists."""
 
+# ============================================================================
+# 5b-ii | NORMAL: SELECT CANDIDATE PROJECT
+# Asked: Choose the candidate project to validate next.
+# Expected response: Exact project name or title.
+# ============================================================================
 NORMAL_PROJECT_SELECTION_PROMPT = """Select the most valuable candidate project to validate next.
 Candidate projects:
 {projects}
@@ -288,12 +228,22 @@ Interview history:
 {question_answer_history}
 Return ONLY the exact project name or title."""
 
+# ============================================================================
+# 5b-iii | NORMAL: SELECT FRESH AREA
+# Asked: Choose an uncovered area from the available areas.
+# Expected response: One exact area from the provided list.
+# ============================================================================
 NORMAL_AREA_SELECTION_PROMPT = """Select the next fresh interview area.
 Available areas: {areas_to_cover}
 Covered areas: {covered_areas}
 Interview history: {question_answer_history}
 Return ONLY one exact area from the available areas."""
 
+# ============================================================================
+# 5b-iv | NORMAL: GENERATE CLARIFICATION QUESTION
+# Asked: Write a specific follow-up to the selected prior answer.
+# Expected response: One spoken clarification question.
+# ============================================================================
 NORMAL_CLARIFICATION_QUESTION_PROMPT = """Generate one natural spoken NORMAL-stage clarification question.
 Selected previous question and answer:
 {selected_qa}
@@ -304,12 +254,22 @@ Candidate profile:
 Ask for concrete detail, reasoning, trade-offs, ownership, or an example. Do not repeat the original question.
 Return ONLY the question text."""
 
+# ============================================================================
+# 5b-v | NORMAL: GENERATE PROJECT QUESTION
+# Asked: Ask about the selected candidate project.
+# Expected response: One spoken question about contribution, decisions, work, or outcome.
+# ============================================================================
 NORMAL_PROJECT_QUESTION_PROMPT = """Generate one natural spoken NORMAL-stage question about this candidate project:
 {selected_project}
 Candidate profile: {candidate_profile}
 Interview history: {question_answer_history}
 Ask for evidence of contribution, design decisions, implementation, or outcomes. Return ONLY the question text."""
 
+# ============================================================================
+# 5b-vi | NORMAL: GENERATE AREA QUESTION
+# Asked: Ask a new core-competency question for the selected area.
+# Expected response: One spoken question that avoids repeating earlier questions.
+# ============================================================================
 NORMAL_AREA_QUESTION_PROMPT = """Generate one natural spoken NORMAL-stage question for the fresh area: {selected_area}
 Candidate profile: {candidate_profile}
 Interview history: {question_answer_history}
@@ -317,7 +277,9 @@ Ask a new core competency question and avoid duplicating previous questions. Ret
 
 
 # ============================================================================
-# 10. NORMAL STAGE - PANEL SELECTION FOR QUESTION
+# 5c | NORMAL: SELECT QUESTION SPEAKER
+# Asked: Match the generated question to the most relevant panel member.
+# Expected response: One exact panel member name.
 # ============================================================================
 NORMAL_PANEL_SELECTION_PROMPT = """You are selecting which interview panel member
 must speak the NEXT interview question.
@@ -361,12 +323,10 @@ Return ONLY the panel member name.
 """
 
 
-# Backward-compatibility alias (used by any code still importing PANEL_SELECTION_PROMPT)
-PANEL_SELECTION_PROMPT = NORMAL_PANEL_SELECTION_PROMPT
-
-
 # ============================================================================
-# 11. EXTENDED STAGE - DECISION (CONTINUE / CONCLUDE)
+# 6 | EXTENDED: DECIDE WHETHER TO CONTINUE
+# Asked: Decide whether strong performance justifies continuing past base time.
+# Expected response: CONTINUE or CONCLUDE.
 # ============================================================================
 EXTENDED_DECISION_PROMPT = """The base interview time has ended.
 
@@ -404,66 +364,10 @@ CONTINUE"""
 
 
 # ============================================================================
-# 12. EXTENDED STAGE - TOPIC & DIRECTION SELECTION
+# 6a | EXTENDED: CHOOSE CONTINUATION ROUTE
+# Asked: Choose whether to clarify, challenge a project, or cover a fresh area.
+# Expected response: CLARIFICATION, PROJECT, or AREA.
 # ============================================================================
-EXTENDED_DIRECTION_PROMPT = """Choose the most valuable next interview direction.
-
-Interview so far:
-
-{question_answer_history}
-
-Areas to cover:
-
-{areas_to_cover}
-
-Candidate profile:
-
-{candidate_profile}
-
-Choose the most valuable uncovered area, candidate project, skill, or meaningful follow-up.
-
-Return ONLY one concise area/topic.
-
-Example output:
-
-"High-Scale System Design" """
-
-
-# ============================================================================
-# 13. EXTENDED STAGE - ADVANCED QUESTION GENERATION
-# ============================================================================
-EXTENDED_STAGE_QUESTION_PROMPT = """You are an expert technical interviewer conducting the EXTENDED stage of a live voice interview with a candidate.
-The candidate has performed well during the base interview time and is now being challenged with deeper, advanced, and production-level scenarios.
-
-Candidate Profile:
-{candidate_profile}
-
-Candidate Context / Specific Skills or Projects:
-{candidate_context}
-
-Selected Interview Area:
-{selected_area}
-
-Interview Transcript & History So Far:
-{question_answer_history}
-
-Candidate's Latest Response:
-{last_candidate_response}
-
-Your task is to generate a challenging, in-depth technical interview question for the EXTENDED stage.
-
-CRITICAL GUIDELINES:
-1. Directly address the candidate in the second person ("you" / "your").
-2. Probe advanced engineering trade-offs, high-concurrency bottlenecks, distributed failure modes, production outages, latency spikes, data consistency, or recovery strategies in the "{selected_area}" domain.
-3. Challenge the candidate to justify architectural choices, defend trade-offs (e.g., consistency vs. latency, horizontal vs. vertical scaling), and think through edge cases under heavy production load.
-4. Keep the question engaging, rigorous, and conversational—spoken directly to the candidate.
-5. NEVER include internal meta-criticism or evaluation commentary (e.g., do NOT say "Since you didn't explain...").
-6. Return ONLY the single spoken question text. Do NOT include quotes, interviewer labels, or preambles.
-
-Example Output:
-"In your distributed architecture, suppose a sudden 10x traffic spike causes your primary message queue to back up and downstream worker nodes begin timing out intermittently. How would you design backpressure and rate limiting so the core service remains available without dropping mission-critical events?"
-"""
-
 EXTENDED_CONTINUE_KIND_PROMPT = """You selected CONTINUE for the EXTENDED stage. Choose exactly one next-question route.
 Interview history: {question_answer_history}
 Latest candidate response: {last_candidate_response}
@@ -471,22 +375,52 @@ Candidate profile: {candidate_profile}
 Routes: CLARIFICATION (deepen a previous answer), PROJECT (challenge a listed project), AREA (choose a fresh area).
 Return ONLY one word: CLARIFICATION, PROJECT, or AREA."""
 
+# ============================================================================
+# 6a-i | EXTENDED: SELECT PRIOR ANSWER TO CLARIFY
+# Asked: Identify which prior question and answer most needs clarification.
+# Expected response: Question ID or zero-based history index.
+# ============================================================================
 EXTENDED_CLARIFICATION_SELECTION_PROMPT = NORMAL_CLARIFICATION_SELECTION_PROMPT
+# ============================================================================
+# 6a-ii | EXTENDED: SELECT CANDIDATE PROJECT
+# Asked: Choose a candidate project to challenge next.
+# Expected response: Exact project name or title.
+# ============================================================================
 EXTENDED_PROJECT_SELECTION_PROMPT = NORMAL_PROJECT_SELECTION_PROMPT
+# ============================================================================
+# 6a-iii | EXTENDED: SELECT FRESH AREA
+# Asked: Choose the next area from the available areas.
+# Expected response: One exact area from the provided list.
+# ============================================================================
 EXTENDED_AREA_SELECTION_PROMPT = NORMAL_AREA_SELECTION_PROMPT
 
+# ============================================================================
+# 6a-iv | EXTENDED: GENERATE CLARIFICATION QUESTION
+# Asked: Generate a production-grade follow-up to the selected answer.
+# Expected response: One spoken advanced clarification question.
+# ============================================================================
 EXTENDED_CLARIFICATION_QUESTION_PROMPT = """Generate one difficult, production-grade EXTENDED-stage clarification question.
 Selected previous question and answer: {selected_qa}
 Full history: {question_answer_history}
 Candidate profile: {candidate_profile}
 Probe failure modes, trade-offs, scalability, observability, consistency, or recovery. Return ONLY one spoken question."""
 
+# ============================================================================
+# 6a-v | EXTENDED: GENERATE PROJECT QUESTION
+# Asked: Challenge the selected project at production scale.
+# Expected response: One spoken advanced project question.
+# ============================================================================
 EXTENDED_PROJECT_QUESTION_PROMPT = """Generate one difficult, production-grade EXTENDED-stage question about this project:
 {selected_project}
 Candidate profile: {candidate_profile}
 Interview history: {question_answer_history}
 Challenge architecture, scale, failure recovery, security, and operational trade-offs. Return ONLY one spoken question."""
 
+# ============================================================================
+# 6a-vi | EXTENDED: GENERATE AREA QUESTION
+# Asked: Challenge the candidate in the selected area at production scale.
+# Expected response: One spoken advanced area question.
+# ============================================================================
 EXTENDED_AREA_QUESTION_PROMPT = """Generate one difficult, production-grade EXTENDED-stage question for this fresh area: {selected_area}
 Candidate profile: {candidate_profile}
 Interview history: {question_answer_history}
@@ -494,7 +428,9 @@ Probe advanced architecture, production failure modes, scale, and trade-offs. Re
 
 
 # ============================================================================
-# 14. EXTENDED STAGE - PANEL SELECTION FOR QUESTION
+# 6b | EXTENDED: SELECT QUESTION SPEAKER
+# Asked: Match the advanced question to the best panel member.
+# Expected response: One exact panel member name.
 # ============================================================================
 EXTENDED_PANEL_SELECTION_PROMPT = """You are selecting which interview panel
 member MUST speak the NEXT EXTENDED-stage question.
@@ -537,7 +473,9 @@ Return ONLY the panel member name.
 
 
 # ============================================================================
-# 15. FINAL STAGE - DECISION (CONTINUE / CONCLUDE)
+# 7 | FINAL: DECIDE WHETHER TO ASK ONE LAST QUESTION
+# Asked: Decide whether exceptional performance justifies one final question.
+# Expected response: CONTINUE or CONCLUDE.
 # ============================================================================
 FINAL_DECISION_PROMPT = """The extended interview time has ended.
 
@@ -575,7 +513,9 @@ CONCLUDE"""
 
 
 # ============================================================================
-# 16. FINAL STAGE - DECISIVE FINAL QUESTION GENERATION
+# 7a | FINAL: GENERATE DECISIVE QUESTION
+# Asked: Create one comprehensive, high-complexity final question.
+# Expected response: One spoken question; it is followed unconditionally by closing.
 # ============================================================================
 FINAL_STAGE_QUESTION_PROMPT = """You are an expert senior interviewer conducting the FINAL stage of a live technical interview.
 This is the decisive final phase of the interview. The candidate has demonstrated strong technical capabilities, and you are permitted to ask strictly ONE decisive, high-complexity final question before the interview concludes unconditionally.
@@ -611,7 +551,9 @@ Example Output:
 
 
 # ============================================================================
-# 17. FINAL STAGE - PANEL SELECTION FOR FINAL QUESTION
+# 7b | FINAL: SELECT QUESTION SPEAKER
+# Asked: Match the final question to the best senior/domain-fit panel member.
+# Expected response: One exact panel member name.
 # ============================================================================
 FINAL_PANEL_SELECTION_PROMPT = """You are selecting which interview panel
 member MUST speak the FINAL interview question.
@@ -649,7 +591,9 @@ Return ONLY the panel member name.
 
 
 # ============================================================================
-# 18. CONCLUSION - CLOSING MESSAGE GENERATION
+# 8 | CLOSING: GENERATE END MESSAGE
+# Asked: Thank the candidate and state that the interview has ended.
+# Expected response: Short professional closing message, with no feedback or question.
 # ============================================================================
 CONCLUDE_PROMPT = """The interview is complete.
 
@@ -673,7 +617,9 @@ Example output:
 
 
 # ============================================================================
-# 19. CONCLUSION - PANEL SELECTION FOR CLOSING MESSAGE
+# 8a | CLOSING: SELECT CLOSING SPEAKER
+# Asked: Choose the panel member who delivers the closing message.
+# Expected response: One exact panel member name.
 # ============================================================================
 CONCLUDE_PANEL_PROMPT = """Available panel members:
 
@@ -693,23 +639,9 @@ Example output:
 
 
 # ============================================================================
-# 20. CONCLUSION - VOICE TTS CLOSING DELIVERY
-# ============================================================================
-ElevenLabs_CLOSING_PROMPT = """Speak this closing message naturally as the selected interview panel member:
-
-{closing_message}
-
-Do not add feedback.
-
-Do not add a hiring decision.
-
-Do not ask another question.
-
-This is the final spoken message of the interview."""
-
-
-# ============================================================================
-# 21. EVALUATION REPORT GENERATION
+# 9 | EVALUATION: GENERATE REPORT
+# Asked: Evaluate candidate against role, company, resume, and interview history.
+# Expected response: JSON object with 0-100 scores, evidence, and recommendation.
 # ============================================================================
 REPORT_PROMPT = """Evaluate this candidate against the company and role.
 
@@ -762,18 +694,3 @@ The recommendation must be one of:
 "Do Not Hire"
 
 Base every score and statement on the provided resume and interview evidence."""
-
-
-# ============================================================================
-# BACKWARD COMPATIBILITY ALIASES
-# ============================================================================
-PROJECT_QUESTION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
-SKILL_QUESTION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
-EXTENDED_PROJECT_QUESTION_PROMPT = EXTENDED_STAGE_QUESTION_PROMPT
-EXTENDED_SKILL_QUESTION_PROMPT = EXTENDED_STAGE_QUESTION_PROMPT
-FINAL_QUESTION_PROMPT = FINAL_STAGE_QUESTION_PROMPT
-
-ElevenLabs_QUESTION_GENERATION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
-ElevenLabs_SKILL_QUESTION_PROMPT = NORMAL_STAGE_QUESTION_PROMPT
-ElevenLabs_EXTENDED_QUESTION_PROMPT = EXTENDED_STAGE_QUESTION_PROMPT
-ElevenLabs_FINAL_QUESTION_PROMPT = FINAL_STAGE_QUESTION_PROMPT

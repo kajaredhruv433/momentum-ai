@@ -5,9 +5,9 @@ Main repeated interview loop for elapsed_time < base_time.
 Direct reasoning and question generation via otheragent (Groq/Gemini):
 1. Groq decision: CONTINUE vs CONCLUDE vs DRAW (NORMAL_DECISION_PROMPT).
 2. If CONCLUDE -> stops asking questions and hands off to conclude.py.
-3. If DRAW -> asks canvas system design architecture question directly.
-4. If CONTINUE -> selects area and generates direct spoken question via NORMAL_STAGE_QUESTION_PROMPT.
-5. Selects the exact panel member to speak via NORMAL_PANEL_SELECTION_PROMPT (stage-specific, context-aware).
+3. If DRAW -> asks a canvas system-design question.
+4. If CONTINUE -> routes to clarification, project, or fresh-area prompts.
+5. Selects the exact panel member to speak via NORMAL_PANEL_SELECTION_PROMPT.
 6. Dispatches directly to ElevenLabs TTS for voice delivery.
 """
 from __future__ import annotations
@@ -28,12 +28,9 @@ try:
         NORMAL_PROJECT_QUESTION_PROMPT,
         NORMAL_AREA_QUESTION_PROMPT,
         NORMAL_PANEL_SELECTION_PROMPT,
-        NORMAL_STAGE_QUESTION_PROMPT,
-        ROLE_AREA_PROMPT,
     )
     from .stage_utils import (
         as_json,
-        choose_question_kind,
         clean_text,
         validated_decision,
         validated_followup_kind,
@@ -52,12 +49,9 @@ except ImportError:
         NORMAL_PROJECT_QUESTION_PROMPT,
         NORMAL_AREA_QUESTION_PROMPT,
         NORMAL_PANEL_SELECTION_PROMPT,
-        NORMAL_STAGE_QUESTION_PROMPT,
-        ROLE_AREA_PROMPT,
     )
     from stage_utils import (
         as_json,
-        choose_question_kind,
         clean_text,
         validated_decision,
         validated_followup_kind,

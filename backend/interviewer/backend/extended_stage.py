@@ -4,9 +4,9 @@ extended_stage.py
 Extended interview loop for base_time <= elapsed_time < extended_time.
 Direct reasoning and deeper question generation via otheragent (Groq/Gemini):
 1. Groq decision: CONTINUE vs CONCLUDE (EXTENDED_DECISION_PROMPT).
-2. If CONTINUE -> selects area via EXTENDED_DIRECTION_PROMPT.
-3. Generates difficult, production-grade spoken question via EXTENDED_STAGE_QUESTION_PROMPT.
-4. Selects the exact panel member to speak via EXTENDED_PANEL_SELECTION_PROMPT (stage-specific, context-aware).
+2. If CONTINUE -> routes to clarification, project, or fresh-area prompts.
+3. Generates a difficult, production-grade spoken question via the selected route.
+4. Selects the exact panel member to speak via EXTENDED_PANEL_SELECTION_PROMPT.
 5. Dispatches directly to ElevenLabs TTS for voice delivery.
 """
 from __future__ import annotations
@@ -26,11 +26,9 @@ try:
         EXTENDED_PROJECT_QUESTION_PROMPT,
         EXTENDED_AREA_QUESTION_PROMPT,
         EXTENDED_PANEL_SELECTION_PROMPT,
-        EXTENDED_STAGE_QUESTION_PROMPT,
     )
     from .stage_utils import (
         as_json,
-        choose_question_kind,
         clean_text,
         validated_decision,
         validated_followup_kind,
@@ -48,11 +46,9 @@ except ImportError:
         EXTENDED_PROJECT_QUESTION_PROMPT,
         EXTENDED_AREA_QUESTION_PROMPT,
         EXTENDED_PANEL_SELECTION_PROMPT,
-        EXTENDED_STAGE_QUESTION_PROMPT,
     )
     from stage_utils import (
         as_json,
-        choose_question_kind,
         clean_text,
         validated_decision,
         validated_followup_kind,
