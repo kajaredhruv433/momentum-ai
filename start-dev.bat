@@ -9,6 +9,8 @@ start "Momentum Backend (Uvicorn)" cmd /k "backend\venv\Scripts\python.exe -m uv
 echo [2/2] Starting Next.js Frontend on http://localhost:3000 ...
 start "Momentum Frontend (Next.js)" cmd /k "cd frontend && npm run dev"
 
+echo [3/3] Interviewer Vite Frontend is available with: npm run dev:interviewer
+
 echo ========================================================
 echo Both servers are starting up in separate windows!
 echo Frontend: http://localhost:3000

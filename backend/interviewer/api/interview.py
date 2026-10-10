@@ -141,7 +141,10 @@ def get_interview_setup_data(
     Extract job specification and candidate resume directly from MongoDB,
     allowing the interview to start immediately without manual user input.
     """
-    from tools.database import mongo
+    try:
+        from ..tools.database import mongo
+    except ImportError:
+        from tools.database import mongo
     from bson import ObjectId
 
     app = None
@@ -277,7 +280,10 @@ def create_and_start_interview(request: CreateInterviewRequest) -> Dict[str, Any
     # Reject if candidate has already taken the interview for this job
     if request.job_id and (request.candidate_id or request.candidate_email):
         try:
-            from tools.database import mongo
+            try:
+                from ..tools.database import mongo
+            except ImportError:
+                from tools.database import mongo
             from bson import ObjectId
             crit = []
             if request.candidate_id:

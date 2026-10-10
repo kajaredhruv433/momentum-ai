@@ -5,12 +5,27 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { LayoutDashboard, Code2, FileText, Video, Briefcase, Settings, LogOut, Flame, Sparkles, Trophy } from "lucide-react"
 import { ModeToggle } from "@/components/ui/theme-toggle"
+import { Button } from "@/components/ui/button"
+import { signOut } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 export default function DashboardLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
+    const handleLogout = async () => {
+        try {
+            await signOut(auth)
+            localStorage.removeItem("momentum_role")
+            localStorage.removeItem("momentum_user_id")
+            window.location.href = "/login"
+        } catch (error) {
+            console.error("Logout failed:", error)
+            window.location.href = "/login"
+        }
+    }
+
     return (
         <div className="flex h-screen overflow-hidden bg-background">
             {/* Sidebar */}
@@ -46,10 +61,13 @@ export default function DashboardLayout({
                     </nav>
                 </div>
                 <div className="mt-auto border-t p-4">
-                    <Link href="/" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-foreground">
+                    <button
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                    >
                         <LogOut className="h-4 w-4" />
                         Log out
-                    </Link>
+                    </button>
                 </div>
             </aside>
 
@@ -69,7 +87,7 @@ export default function DashboardLayout({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-sm font-medium shadow-sm hover:scale-105 transition-transform cursor-pointer group relative">
                             <Flame className="h-4 w-4 text-orange-500 fill-orange-500 animate-pulse" />
                             <span>0 Day streak</span>
@@ -81,6 +99,16 @@ export default function DashboardLayout({
                             </div>
                         </div>
                         <ModeToggle />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleLogout}
+                            className="text-muted-foreground hover:text-red-400 hover:bg-red-500/10 gap-2 h-9 px-3 cursor-pointer"
+                            title="Log out of Momentum"
+                        >
+                            <LogOut className="h-4 w-4" />
+                            <span className="hidden sm:inline text-xs font-semibold">Log out</span>
+                        </Button>
                     </div>
                 </header>
 

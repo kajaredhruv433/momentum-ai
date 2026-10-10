@@ -4,11 +4,16 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Code2, FileText, CheckCircle, Orbit, Zap, Shield, Sparkles } from "lucide-react"
+import { ArrowRight, Code2, FileText, CheckCircle, Orbit, Zap, Shield, Sparkles, LogOut } from "lucide-react"
+import { onAuthStateChanged, signOut, User } from "firebase/auth"
+import { auth } from "@/lib/firebase"
 
 export default function LandingPage() {
   const [stars, setStars] = useState<any[]>([])
   const [shootingStars, setShootingStars] = useState<any[]>([])
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [userRole, setUserRole] = useState<string>("user")
 
   useEffect(() => {
     // Generate stars
@@ -30,7 +35,67 @@ export default function LandingPage() {
       delay: `${Math.random() * 10}s`
     }))
     setShootingStars(newShootingStars)
+
+    // Check auth status: If person is logged in, directly go to dashboard
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Direct instant redirect to dashboard
+        const cachedRole = typeof window !== "undefined" ? localStorage.getItem("momentum_role") : null
+        if (cachedRole === "recruiter") {
+          window.location.href = "/recruiter/dashboard"
+          return
+        } else if (cachedRole === "user") {
+          window.location.href = "/dashboard"
+          return
+        }
+
+        try {
+          const res = await fetch('/api/users/role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: user.uid }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            const r = data.role || "user"
+            localStorage.setItem("momentum_role", r)
+            localStorage.setItem("momentum_user_id", user.uid)
+            window.location.href = r === "recruiter" ? "/recruiter/dashboard" : "/dashboard"
+            return
+          }
+        } catch (e) {
+          console.error("Error fetching user role on landing:", e)
+        }
+        window.location.href = "/dashboard"
+        return
+      } else {
+        setIsCheckingAuth(false)
+      }
+    })
+
+    return () => unsubscribe()
   }, [])
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      localStorage.removeItem("momentum_role")
+      localStorage.removeItem("momentum_user_id")
+      setCurrentUser(null)
+    } catch (e) {
+      console.error("Logout failed:", e)
+    }
+  }
+
+  const dashboardUrl = userRole === "recruiter" ? "/recruiter/dashboard" : "/dashboard"
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-950 text-white gap-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+      </div>
+    )
+  }
 
   return (
     <div className="relative min-h-screen flex flex-col text-white selection:bg-primary/30">
@@ -80,11 +145,32 @@ export default function LandingPage() {
             <Link href="#about" className="hover:text-white transition-colors">About</Link>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Link href="/login" className="hidden sm:block text-sm font-medium hover:text-blue-400 transition-colors">Sign In</Link>
-            <Button asChild variant="default" className="bg-white text-black hover:bg-white/90 rounded-xl px-6 font-semibold shadow-lg">
-              <Link href="/login">Launch App</Link>
-            </Button>
+          <div className="flex items-center gap-3">
+            {currentUser ? (
+              <>
+                <Button asChild variant="default" className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-5 font-semibold shadow-lg shadow-blue-600/20">
+                  <Link href={dashboardUrl}>
+                    Go to Dashboard
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleLogout}
+                  className="glass border-white/10 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 rounded-xl px-4 text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer"
+                  title="Sign out of your account"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden sm:inline">Log out</span>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="hidden sm:block text-sm font-medium hover:text-blue-400 transition-colors">Sign In</Link>
+                <Button asChild variant="default" className="bg-white text-black hover:bg-white/90 rounded-xl px-6 font-semibold shadow-lg">
+                  <Link href="/login">Launch App</Link>
+                </Button>
+              </>
+            )}
           </div>
         </nav>
       </header>
@@ -114,17 +200,39 @@ export default function LandingPage() {
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-10">
-                <Button asChild size="lg" className="h-14 px-10 text-lg rounded-2xl bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/20 group transition-all duration-300">
-                  <Link href="/register" className="flex items-center gap-2">
-                    Start My Journey
-                    <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="lg" className="h-14 px-10 text-lg rounded-2xl glass border-white/10 hover:bg-white/5 transition-all">
-                  <Link href="/register">
-                    I'm a Recruiter
-                  </Link>
-                </Button>
+                {currentUser ? (
+                  <>
+                    <Button asChild size="lg" className="h-14 px-10 text-lg rounded-2xl bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/20 group transition-all duration-300">
+                      <Link href={dashboardUrl} className="flex items-center gap-2">
+                        Go to Dashboard
+                        <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={handleLogout}
+                      className="h-14 px-8 text-lg rounded-2xl glass border-white/10 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      Log out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button asChild size="lg" className="h-14 px-10 text-lg rounded-2xl bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/20 group transition-all duration-300">
+                      <Link href="/register" className="flex items-center gap-2">
+                        Start My Journey
+                        <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="lg" className="h-14 px-10 text-lg rounded-2xl glass border-white/10 hover:bg-white/5 transition-all">
+                      <Link href="/register">
+                        I'm a Recruiter
+                      </Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

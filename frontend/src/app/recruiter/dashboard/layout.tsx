@@ -6,10 +6,11 @@ import { cn } from "@/lib/utils"
 // Ensure these icons exist
 import { LayoutDashboard, Users, Briefcase, PlusCircle, LogOut } from "lucide-react"
 import { ModeToggle } from "@/components/ui/theme-toggle"
+import { Button } from "@/components/ui/button"
 
 import { useEffect, useState } from "react"
 import { auth } from "@/lib/firebase"
-import { onAuthStateChanged } from "firebase/auth"
+import { onAuthStateChanged, signOut } from "firebase/auth"
 
 export default function RecruiterDashboardLayout({
     children,
@@ -17,6 +18,18 @@ export default function RecruiterDashboardLayout({
     children: React.ReactNode
 }) {
     const [companyName, setCompanyName] = useState<string | null>(null)
+
+    const handleLogout = async () => {
+        try {
+            await signOut(auth)
+            localStorage.removeItem("momentum_role")
+            localStorage.removeItem("momentum_user_id")
+            window.location.href = "/login"
+        } catch (error) {
+            console.error("Logout failed:", error)
+            window.location.href = "/login"
+        }
+    }
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -69,10 +82,13 @@ export default function RecruiterDashboardLayout({
                     </nav>
                 </div>
                 <div className="mt-auto border-t border-slate-700 p-4">
-                    <Link href="/" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-all hover:text-white">
+                    <button
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-all hover:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                    >
                         <LogOut className="h-4 w-4" />
                         Log out
-                    </Link>
+                    </button>
                 </div>
             </aside>
 
@@ -87,8 +103,18 @@ export default function RecruiterDashboardLayout({
                             </span>
                         )}
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                         <ModeToggle />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleLogout}
+                            className="text-muted-foreground hover:text-red-400 hover:bg-red-500/10 gap-2 h-9 px-3 cursor-pointer"
+                            title="Log out of Momentum"
+                        >
+                            <LogOut className="h-4 w-4" />
+                            <span className="hidden sm:inline text-xs font-semibold">Log out</span>
+                        </Button>
                         <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center font-black shadow-lg shadow-blue-500/20">
                             M
                         </div>

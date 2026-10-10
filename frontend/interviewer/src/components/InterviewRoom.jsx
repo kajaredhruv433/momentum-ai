@@ -385,13 +385,15 @@ export default function InterviewRoom({
           </div>
         </div>
 
-        {/* RIGHT: Live Transcript Feed */}
-        <Transcript
-          history={state?.history || []}
-          currentQuestion={currentQ}
-          currentSpeaker={currentSpeaker}
-          liveTranscript={liveTranscript}
-        />
+        {/* RIGHT: Live Transcript Feed - Fixed in view with auto-scrolling questions & answers */}
+        <div style={{ position: 'sticky', top: '16px', height: 'calc(100vh - 120px)', minHeight: '520px', display: 'flex', flexDirection: 'column' }}>
+          <Transcript
+            history={state?.history || []}
+            currentQuestion={currentQ}
+            currentSpeaker={currentSpeaker}
+            liveTranscript={liveTranscript}
+          />
+        </div>
       </div>
     </div>
   );

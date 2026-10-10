@@ -36,7 +36,7 @@ except ImportError:
     from otheragent import ask_groq
     from prompts import REPORT_PROMPT
     from stage_utils import as_json, clean_text, repair_json
-    from tools.database import mongo
+    from .tools.database import mongo
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/momentum")
 DB_NAME = os.getenv("DB_NAME", "momentum")

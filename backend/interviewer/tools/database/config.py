@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 # Always load the backend-owned configuration, irrespective of the directory
 # from which uvicorn is started.
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 # ---------------------------------------------------------

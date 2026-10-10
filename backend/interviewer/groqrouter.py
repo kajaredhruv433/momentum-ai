@@ -17,6 +17,7 @@ import os
 import re
 import time
 import threading
+from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -27,7 +28,7 @@ try:
 except ImportError:
     from groqresponce import generate_groq_response
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_TPM_LIMIT = int(os.getenv("GROQ_TPM_LIMIT", "8000"))
@@ -236,7 +237,7 @@ class GroqKeyRouter:
         if __package__:
             from .otheragent import estimate_tokens
         else:
-            from otheragent import estimate_tokens
+            from .otheragent import estimate_tokens
         estimated_prompt_tokens = estimate_tokens(prompt)
         estimated_required = estimated_prompt_tokens + max_output_tokens
 

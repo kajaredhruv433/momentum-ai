@@ -766,7 +766,7 @@ class InterviewController:
 
         # Run AI diagram analysis
         try:
-            from canvas_analysis import analyze_canvas_diagram
+            from .canvas_analysis import analyze_canvas_diagram
         except ImportError:
             try:
                 from .canvas_analysis import analyze_canvas_diagram

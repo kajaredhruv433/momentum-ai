@@ -51,9 +51,9 @@ The interview engine is completely dedicated to real-time conversational adaptab
 backend/
 ├── main.py                         # Unified FastAPI app and portal router composition
 ├── routers/                        # Recruitment portal APIs (jobs, users, applications, etc.)
-└── interviewer/backend/            # AI interview controller, stages, prompts, voice, and persistence
+└── interviewer/                    # AI interview controller, stages, prompts, voice, and persistence
 frontend/                           # Next.js recruitment portal and recruiter dashboards
-backend/interviewer/frontend/       # Vite interview room and device/canvas experience
+frontend/interviewer/               # Vite interview room and device/canvas experience
 scripts/                            # Data migration, integration, and verification utilities
 ```
 
@@ -470,11 +470,11 @@ Copy the template files to create local environment configurations:
 
 ```bash
 # Windows
-copy backend\interviewer\backend\.env.example backend\interviewer\backend\.env
+copy backend\.env.example backend\.env
 copy frontend\.env.example frontend\.env.local
 
 # macOS / Linux
-cp backend/interviewer/backend/.env.example backend/interviewer/backend/.env
+cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 ```
 
@@ -482,7 +482,7 @@ cp frontend/.env.example frontend/.env.local
 
 ### Environment Variables Reference
 
-#### Backend Configuration (`backend/interviewer/backend/.env`)
+#### Backend Configuration (`backend/.env`)
 
 | Variable | Description | Example / Recommended Value |
 |---|---|---|

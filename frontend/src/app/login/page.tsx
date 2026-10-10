@@ -1,13 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { MomentumBackground } from "@/components/ui/momentum-background"
-import { Loader2, Mail, Briefcase, User } from "lucide-react"
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, User as FirebaseUser } from "firebase/auth"
+import { Loader2, Mail, Briefcase, User, Sparkles } from "lucide-react"
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, User as FirebaseUser, onAuthStateChanged } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 import {
     Dialog,
@@ -20,6 +20,7 @@ import {
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState<boolean>(false)
+    const [isCheckingAutoLogin, setIsCheckingAutoLogin] = useState<boolean>(true)
     const [role, setRole] = useState<"user" | "recruiter">("user")
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
@@ -31,6 +32,66 @@ export default function LoginPage() {
     const [companyNameInput, setCompanyNameInput] = useState("")
     const [isCompanyLoading, setIsCompanyLoading] = useState(false)
     const [companyDialogError, setCompanyDialogError] = useState<string | null>(null)
+
+    // Auto-login detection for returning users from the same browser
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    // Check local storage cached role for instant redirection
+                    const cachedRole = typeof window !== "undefined" ? localStorage.getItem("momentum_role") : null
+                    if (cachedRole === "recruiter") {
+                        window.location.href = "/recruiter/dashboard"
+                        return
+                    } else if (cachedRole === "user") {
+                        window.location.href = "/dashboard"
+                        return
+                    }
+
+                    // Query role from database
+                    const res = await fetch('/api/users/role', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ uid: user.uid }),
+                    })
+
+                    if (res.ok) {
+                        const data = await res.json()
+                        const dbRole = data.role
+                        if (dbRole === "recruiter") {
+                            localStorage.setItem("momentum_role", "recruiter")
+                            localStorage.setItem("momentum_user_id", user.uid)
+                            if (!data.companyName) {
+                                setPendingUser(user)
+                                setIsCheckingAutoLogin(false)
+                                setShowCompanyDialog(true)
+                                return
+                            }
+                            window.location.href = "/recruiter/dashboard"
+                            return
+                        } else {
+                            localStorage.setItem("momentum_role", "user")
+                            localStorage.setItem("momentum_user_id", user.uid)
+                            window.location.href = "/dashboard"
+                            return
+                        }
+                    } else {
+                        localStorage.setItem("momentum_role", "user")
+                        localStorage.setItem("momentum_user_id", user.uid)
+                        window.location.href = "/dashboard"
+                        return
+                    }
+                } catch (err) {
+                    console.error("Auto login error:", err)
+                    setIsCheckingAutoLogin(false)
+                }
+            } else {
+                setIsCheckingAutoLogin(false)
+            }
+        })
+
+        return () => unsubscribe()
+    }, [])
 
     async function onSubmit(event: React.SyntheticEvent) {
         event.preventDefault()
@@ -53,6 +114,8 @@ export default function LoginPage() {
                 const data = await res.json()
                 const dbRole = data.role
                 if (dbRole === "recruiter") {
+                    localStorage.setItem("momentum_role", "recruiter")
+                    localStorage.setItem("momentum_user_id", user.uid)
                     if (!data.companyName) {
                         setPendingUser(user)
                         setIsLoading(false)
@@ -62,8 +125,12 @@ export default function LoginPage() {
                     window.location.href = "/recruiter/dashboard"
                     return
                 }
+                localStorage.setItem("momentum_role", "user")
+                localStorage.setItem("momentum_user_id", user.uid)
                 window.location.href = "/dashboard"
             } else {
+                localStorage.setItem("momentum_role", "user")
+                localStorage.setItem("momentum_user_id", user.uid)
                 window.location.href = "/dashboard"
             }
         } catch (error: any) {
@@ -91,6 +158,8 @@ export default function LoginPage() {
                 const data = await resCheck.json()
                 // If user is already registered as recruiter
                 if (data.role === "recruiter") {
+                    localStorage.setItem("momentum_role", "recruiter")
+                    localStorage.setItem("momentum_user_id", user.uid)
                     if (data.companyName) {
                         window.location.href = "/recruiter/dashboard"
                         return
@@ -104,6 +173,8 @@ export default function LoginPage() {
 
                 // If user chose recruiter tab on login page
                 if (role === "recruiter") {
+                    localStorage.setItem("momentum_role", "recruiter")
+                    localStorage.setItem("momentum_user_id", user.uid)
                     if (data.companyName) {
                         window.location.href = "/recruiter/dashboard"
                         return
@@ -114,11 +185,15 @@ export default function LoginPage() {
                     return
                 }
 
+                localStorage.setItem("momentum_role", "user")
+                localStorage.setItem("momentum_user_id", user.uid)
                 window.location.href = "/dashboard"
                 return
             } else {
                 // User does not exist in DB yet
                 if (role === "recruiter") {
+                    localStorage.setItem("momentum_role", "recruiter")
+                    localStorage.setItem("momentum_user_id", user.uid)
                     setPendingUser(user)
                     setIsLoading(false)
                     setShowCompanyDialog(true)
@@ -137,6 +212,8 @@ export default function LoginPage() {
                         role: "user",
                     }),
                 })
+                localStorage.setItem("momentum_role", "user")
+                localStorage.setItem("momentum_user_id", user.uid)
                 window.location.href = "/dashboard"
             }
         } catch (error: any) {
@@ -177,12 +254,31 @@ export default function LoginPage() {
                 throw new Error(errData.detail || errData.message || "Failed to save company name.")
             }
 
+            localStorage.setItem("momentum_role", "recruiter")
+            localStorage.setItem("momentum_user_id", pendingUser.uid)
             window.location.href = "/recruiter/dashboard"
         } catch (err: any) {
             console.error("Failed to submit company name:", err)
             setCompanyDialogError(err.message || "Failed to save company name.")
             setIsCompanyLoading(false)
         }
+    }
+
+    if (isCheckingAutoLogin) {
+        return (
+            <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-950 text-white gap-4 relative overflow-hidden">
+                <MomentumBackground />
+                <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
+                    <div className="h-12 w-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                    </div>
+                    <div className="space-y-1">
+                        <h3 className="text-xl font-bold tracking-tight">Authenticating with Momentum</h3>
+                        <p className="text-sm text-slate-400">Restoring your browser session automatically...</p>
+                    </div>
+                </div>
+            </div>
+        )
     }
 
     return (

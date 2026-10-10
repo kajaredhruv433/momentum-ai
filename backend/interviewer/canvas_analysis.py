@@ -12,12 +12,13 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +317,7 @@ def _analyze_with_groq_text(question: str, role: str) -> Dict[str, Any]:
     Fallback: text-only Groq analysis when vision API cannot be reached.
     """
     try:
-        from otheragent import ask_groq
+        from .otheragent import ask_groq
     except ImportError:
         try:
             from .otheragent import ask_groq

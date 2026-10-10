@@ -18,6 +18,7 @@ IMPORTANT:
 import os
 import time
 import threading
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -31,7 +32,7 @@ except ImportError:
 # ENV
 # ============================================================
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 # ============================================================

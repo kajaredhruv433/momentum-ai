@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 # Ensure environment variables are loaded
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 try:
     from .api.candidate import router as candidate_router
@@ -72,8 +72,8 @@ def health() -> Dict[str, str]:
 
 
 # Host frontend static files (prefers built dist/ if available, otherwise frontend root)
-FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
-FRONTEND_SRC = Path(__file__).resolve().parents[1] / "frontend"
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "interviewer" / "dist"
+FRONTEND_SRC = Path(__file__).resolve().parents[2] / "frontend" / "interviewer"
 
 
 @app.get("/")
@@ -101,4 +101,4 @@ elif FRONTEND_SRC.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("backend.interviewer.main:app", host="0.0.0.0", port=8000, reload=True)

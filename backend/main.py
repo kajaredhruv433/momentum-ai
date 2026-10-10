@@ -1,5 +1,3 @@
-import os
-import sys
 import asyncio
 from pathlib import Path
 import uvicorn
@@ -9,15 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 BASE_DIR = Path(__file__).resolve().parent
-INTERVIEWER_BACKEND_DIR = BASE_DIR / "interviewer" / "backend"
-INTERVIEWER_FRONTEND_DIST = BASE_DIR / "interviewer" / "frontend" / "dist"
-V9_SITE_PACKAGES = r"C:\Users\dhruv\Music\Skill\EchoSphere\v9\backend\.venv\Lib\site-packages"
-
-if V9_SITE_PACKAGES not in sys.path and Path(V9_SITE_PACKAGES).exists():
-    sys.path.insert(0, V9_SITE_PACKAGES)
-
-if str(INTERVIEWER_BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(INTERVIEWER_BACKEND_DIR))
+INTERVIEWER_FRONTEND_DIST = BASE_DIR.parent / "frontend" / "interviewer" / "dist"
 
 from backend.routers import (
     users,
@@ -33,9 +23,9 @@ from backend.config import PORT, HOST
 
 # Import Momentum authoritative interview platform routers & controllers
 try:
-    from api.interview import router as v9_interview_router
-    from api.candidate import router as v9_candidate_router
-    from api.websocket import router as v9_websocket_router, manager as v9_ws_manager
+    from backend.interviewer.api.interview import router as v9_interview_router
+    from backend.interviewer.api.candidate import router as v9_candidate_router
+    from backend.interviewer.api.websocket import router as v9_websocket_router, manager as v9_ws_manager
 except ImportError as err:
     print("Warning: Could not import interviewer routers:", err)
     v9_interview_router = None
@@ -128,5 +118,5 @@ def serve_root():
     }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=True)
+    uvicorn.run("backend.main:app", host=HOST, port=PORT, reload=True)
 

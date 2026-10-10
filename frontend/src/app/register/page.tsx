@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -16,11 +16,12 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog"
 
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, User as FirebaseUser } from "firebase/auth"
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, User as FirebaseUser, onAuthStateChanged } from "firebase/auth"
 import { auth } from "@/lib/firebase"
 
 export default function RegisterPage() {
     const [isLoading, setIsLoading] = useState<boolean>(false)
+    const [isCheckingAutoLogin, setIsCheckingAutoLogin] = useState<boolean>(true)
     const [role, setRole] = useState<"user" | "recruiter">("user")
     const [password, setPassword] = useState("")
     const [name, setName] = useState("")
@@ -33,6 +34,42 @@ export default function RegisterPage() {
     const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null)
     const [googleCompanyName, setGoogleCompanyName] = useState("")
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+
+    // Auto-login detection: if already authenticated, go to dashboard
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const cachedRole = typeof window !== "undefined" ? localStorage.getItem("momentum_role") : null
+                if (cachedRole === "recruiter") {
+                    window.location.href = "/recruiter/dashboard"
+                    return
+                } else if (cachedRole === "user") {
+                    window.location.href = "/dashboard"
+                    return
+                }
+
+                try {
+                    const res = await fetch('/api/users/role', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ uid: user.uid }),
+                    })
+                    if (res.ok) {
+                        const data = await res.json()
+                        const dbRole = data.role || "user"
+                        localStorage.setItem("momentum_role", dbRole)
+                        localStorage.setItem("momentum_user_id", user.uid)
+                        window.location.href = dbRole === "recruiter" ? "/recruiter/dashboard" : "/dashboard"
+                        return
+                    }
+                } catch (e) {
+                    console.error("Auto login error on register:", e)
+                }
+            }
+            setIsCheckingAutoLogin(false)
+        })
+        return () => unsubscribe()
+    }, [])
 
 
     async function onSubmit(event: React.SyntheticEvent) {
@@ -69,6 +106,10 @@ export default function RegisterPage() {
                 throw new Error(errorData.detail || errorData.message || "Failed to sync user data.");
             }
 
+            // Save role & session in localStorage for immediate auto-login
+            localStorage.setItem("momentum_role", role)
+            localStorage.setItem("momentum_user_id", user.uid)
+
             // Redirect to dashboard
             window.location.href = role === "recruiter" ? "/recruiter/dashboard" : "/dashboard"
 
@@ -98,6 +139,8 @@ export default function RegisterPage() {
                 const existingData = await checkRes.json()
                 // If user is already in DB as recruiter:
                 if (existingData.role === 'recruiter') {
+                    localStorage.setItem("momentum_role", "recruiter")
+                    localStorage.setItem("momentum_user_id", user.uid)
                     if (existingData.companyName) {
                         window.location.href = "/recruiter/dashboard"
                         return
@@ -111,18 +154,24 @@ export default function RegisterPage() {
 
                 // If user was job seeker in DB but registering on recruiter tab
                 if (role === 'recruiter') {
+                    localStorage.setItem("momentum_role", "recruiter")
+                    localStorage.setItem("momentum_user_id", user.uid)
                     setGoogleUser(user)
                     setIsLoading(false)
                     setShowCompanyDialog(true)
                     return
                 }
 
+                localStorage.setItem("momentum_role", "user")
+                localStorage.setItem("momentum_user_id", user.uid)
                 window.location.href = "/dashboard"
                 return
             }
 
             // User does not exist in DB yet
             if (role === 'recruiter') {
+                localStorage.setItem("momentum_role", "recruiter")
+                localStorage.setItem("momentum_user_id", user.uid)
                 setGoogleUser(user)
                 setIsLoading(false)
                 setShowCompanyDialog(true)
@@ -159,6 +208,8 @@ export default function RegisterPage() {
                 throw new Error(errorData.detail || errorData.message || "Failed to sync user data.");
             }
 
+            localStorage.setItem("momentum_role", role)
+            localStorage.setItem("momentum_user_id", user.uid)
             window.location.href = role === "recruiter" ? "/recruiter/dashboard" : "/dashboard"
         } catch (error: any) {
             console.error("Sync error:", error)
@@ -180,6 +231,22 @@ export default function RegisterPage() {
         await syncGoogleUser(googleUser, trimmedCompany);
     }
 
+    if (isCheckingAutoLogin) {
+        return (
+            <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-950 text-white gap-4 relative overflow-hidden">
+                <MomentumBackground />
+                <div className="relative z-10 flex flex-col items-center gap-4 text-center px-6">
+                    <div className="h-12 w-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                    </div>
+                    <div className="space-y-1">
+                        <h3 className="text-xl font-bold tracking-tight">Authenticating with Momentum</h3>
+                        <p className="text-sm text-slate-400">Checking your browser session...</p>
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-slate-950">
