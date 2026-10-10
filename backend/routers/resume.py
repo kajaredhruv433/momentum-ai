@@ -90,3 +90,71 @@ async def save_resume_candidate(request: Request):
 
     return {"success": True, "data": candidate_entry}
 
+
+@router.post("/analyze")
+async def analyze_candidate_resume(request: Request):
+    """
+    Analyzes resume data with AI via ask_llm from backend/interviewer/otheragent.py
+    and saves the analysis to database.
+    """
+    from backend.candidate.resume_analyser.resume_analyser import analyze_resume
+
+    data = await request.json()
+    resume_payload = data.get("resumeData") or data
+    email = data.get("email") or resume_payload.get("personal", {}).get("email") or resume_payload.get("userId")
+    uid = data.get("uid") or resume_payload.get("uid")
+    target_role = data.get("targetRole") or resume_payload.get("personal", {}).get("role")
+    target_company = data.get("targetCompany") or resume_payload.get("personal", {}).get("targetCompany")
+
+    db = get_db()
+
+    # If resume_payload has no experience/education, try fetching existing from DB
+    if not resume_payload.get("experience") and not resume_payload.get("skills") and (email or uid):
+        query = {}
+        if email and uid:
+            query["$or"] = [{"userId": {"$regex": f"^{email}$", "$options": "i"}}, {"uid": uid}]
+        elif email:
+            query["userId"] = {"$regex": f"^{email}$", "$options": "i"}
+        else:
+            query["uid"] = uid
+        found = await db.resumes.find_one(query)
+        if found:
+            resume_payload = found
+
+    analysis_res = analyze_resume(
+        resume_data=resume_payload,
+        target_role=target_role,
+        target_company=target_company
+    )
+
+    # Save to db if user identifier exists
+    if email or uid:
+        query = {}
+        if email and uid:
+            query["$or"] = [{"userId": {"$regex": f"^{email}$", "$options": "i"}}, {"uid": uid}]
+        elif email:
+            query["userId"] = {"$regex": f"^{email}$", "$options": "i"}
+        else:
+            query["uid"] = uid
+
+        await db.resumes.update_one(
+            query,
+            {"$set": {"analysis": analysis_res, "analyzedAt": datetime.utcnow()}},
+            upsert=False
+        )
+
+        name = resume_payload.get("personal", {}).get("fullName")
+        if name:
+            await db.candidates.update_one(
+                {"name": name},
+                {"$set": {
+                    "score": analysis_res.get("score", 0),
+                    "feedback": analysis_res.get("feedback", ""),
+                    "status": analysis_res.get("status", "Ready for Interview")
+                }},
+                upsert=False
+            )
+
+    return {"success": True, "analysis": analysis_res}
+
+

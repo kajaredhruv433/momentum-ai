@@ -5,7 +5,12 @@ from datetime import datetime
 from backend.database import get_db, serialize_doc, serialize_docs
 from backend.services.code_executor import execute_code
 import uuid
-from backend.services.gemini_service import get_model, safe_parse_json, GEMINI_API_KEY, generate_problems_ai
+from backend.services.gemini_service import get_model, safe_parse_json, GEMINI_API_KEY
+from backend.candidate.solve_problem.solve_problem import (
+    generate_5_problems,
+    get_problem_solution,
+    evaluate_candidate_answer as evaluate_candidate_answer_ai,
+)
 from bson import ObjectId
 import json
 
@@ -47,7 +52,7 @@ async def generate_problem(req: GenerateProblemRequest):
         raise HTTPException(status_code=400, detail="User ID is required")
 
     is_coding = req.type == "coding"
-    problems_data = await generate_problems_ai(req.topic, is_coding)
+    problems_data = generate_5_problems(req.topic, is_coding)
 
     db = get_db()
     saved_problems = []
@@ -126,66 +131,25 @@ async def get_solution(problemId: Optional[str] = Query(None), language: Optiona
         raise HTTPException(status_code=400, detail="Problem ID is required")
 
     problem = await db.problems.find_one({"$or": [{"id": problemId}, {"slug": problemId}]})
-    default_solution = f"# Optimal solution for {problemId}\ndef solution():\n    pass"
+    title = problem.get("title", problemId) if problem else problemId
+    desc = problem.get("description", "") if problem else ""
 
-    if not GEMINI_API_KEY:
-        return {"solution": default_solution}
-
-    try:
-        model = get_model()
-        title = problem.get("title", problemId) if problem else problemId
-        desc = problem.get("description", "") if problem else ""
-        prompt = f"""
-        Generate an optimal, well-commented solution for the coding problem:
-        Title: {title}
-        Description: {desc}
-        Language: {language}
-
-        Requirements:
-        1. Clean efficient code with comments
-        2. Include Time and Space complexity
-        Return ONLY the code without markdown fences.
-        """
-        response = model.generate_content(prompt)
-        text = response.text.replace("```python", "").replace("```javascript", "").replace("```", "").strip()
-        return {"solution": text}
-    except Exception as e:
-        print("AI Solution Error:", e)
-        return {"solution": default_solution}
+    solution_text = get_problem_solution(title=title, description=desc, language=language)
+    return {"solution": solution_text}
 
 @router.post("/api/evaluate-answer")
 async def evaluate_answer(req: EvaluateAnswerRequest):
     db = get_db()
-    default_eval = {
-        "score": 8,
-        "feedback": "Solid answer. Clearly outlined the main principles and trade-offs.",
-        "status": "Passed"
-    }
-    if not GEMINI_API_KEY:
-        return default_eval
+    problem = await db.problems.find_one({"$or": [{"id": req.problemId}, {"slug": req.problemId}]})
+    title = problem.get("title", req.problemId) if problem else req.problemId
+    desc = problem.get("description", "") if problem else ""
 
-    try:
-        model = get_model()
-        prompt = f"""
-        Evaluate candidate's verbal response to this conceptual technical problem:
-        Problem ID: {req.problemId}
-        Candidate Answer: {req.userAnswer}
-
-        Return STRICT JSON:
-        {{
-            "score": number (1-10),
-            "feedback": "evaluation string",
-            "status": "Passed" | "Needs Improvement" | "Failed"
-        }}
-        """
-        response = model.generate_content(prompt)
-        parsed = safe_parse_json(response.text)
-        if parsed and "score" in parsed:
-            return parsed
-    except Exception as e:
-        print("Evaluate answer error:", e)
-
-    return default_eval
+    eval_result = evaluate_candidate_answer_ai(
+        problem_title=title,
+        problem_description=desc,
+        candidate_answer=req.userAnswer
+    )
+    return eval_result
 
 @router.get("/api/submissions")
 async def get_submissions(problemId: Optional[str] = Query(None), userId: Optional[str] = Query("default-user")):

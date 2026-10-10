@@ -12,6 +12,7 @@ import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth"
+import { useRouter } from "next/navigation"
 
 function InputGroup({ label, name, value, onChange, placeholder }: any) {
     return (
@@ -79,8 +80,10 @@ type ResumeData = {
 }
 
 export default function ResumePage() {
+    const router = useRouter()
     const [template, setTemplate] = useState<"modern" | "classic" | "tech">("modern")
     const [isSaving, setIsSaving] = useState(false)
+    const [isAnalyzing, setIsAnalyzing] = useState(false)
     const [isExporting, setIsExporting] = useState(false)
     const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null)
 
@@ -223,6 +226,45 @@ export default function ResumePage() {
         }
     }
 
+    const handleAnalyzeResume = async () => {
+        setIsAnalyzing(true);
+        try {
+            const payload: any = { ...data };
+            if (!payload.personal.email && currentUser?.email) {
+                payload.personal.email = currentUser.email;
+            }
+            if (currentUser?.uid) {
+                payload.uid = currentUser.uid;
+            }
+
+            // Save first to ensure persistent record
+            await fetch('/api/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            // Call AI analysis
+            const res = await fetch('/api/resume/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resumeData: payload, email: currentUser?.email, uid: currentUser?.uid }),
+            });
+            const result = await res.json();
+            if (result.success && result.analysis) {
+                setData(prev => ({ ...prev, analysis: result.analysis }));
+                router.push('/dashboard/analysis');
+            } else {
+                alert("Failed to analyze resume with AI.");
+            }
+        } catch (error) {
+            console.error("AI Analysis error:", error);
+            alert("Error running AI resume analysis.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    }
+
     return (
         <div className="flex flex-col min-h-[calc(100vh-6rem)] md:h-[calc(100vh-6rem)] gap-6 p-4 md:p-0">
             {/* Top Toolbar */}
@@ -267,9 +309,22 @@ export default function ResumePage() {
                 <div className="flex gap-2">
                     <Button
                         size="sm"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+                        onClick={handleAnalyzeResume}
+                        disabled={isSaving || isAnalyzing}
+                    >
+                        {isAnalyzing ? (
+                            <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                        ) : (
+                            <Sparkles className="mr-2 h-4 w-4 text-amber-300" />
+                        )}
+                        {isAnalyzing ? "Analyzing..." : "Analyze with AI"}
+                    </Button>
+                    <Button
+                        size="sm"
                         className="bg-green-600 hover:bg-green-700 text-white"
                         onClick={handleSaveResume}
-                        disabled={isSaving}
+                        disabled={isSaving || isAnalyzing}
                     >
                         {isSaving ? (
                             <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
@@ -280,12 +335,13 @@ export default function ResumePage() {
                     </Button>
                     <Button
                         size="sm"
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        variant="outline"
+                        className="border-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950"
                         onClick={handleExportPDF}
-                        disabled={isSaving}
+                        disabled={isSaving || isAnalyzing}
                     >
                         {isSaving ? (
-                            <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                            <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2" />
                         ) : (
                             <Download className="mr-2 h-4 w-4" />
                         )}

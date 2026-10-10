@@ -54,6 +54,9 @@ async def on_startup():
     if v9_ws_manager:
         v9_ws_manager.loop = asyncio.get_running_loop()
 
+from backend.candidate.solve_problem.solve_problem import router as candidate_solve_problem_router
+from backend.candidate.resume_analyser.resume_analyser import router as candidate_resume_analyser_router
+
 # Include Momentum core routers
 app.include_router(users.router)
 app.include_router(jobs.router)
@@ -63,6 +66,8 @@ app.include_router(recruiter.router)
 app.include_router(resume.router)
 app.include_router(problems.router)
 app.include_router(interviews.router)
+app.include_router(candidate_solve_problem_router)
+app.include_router(candidate_resume_analyser_router)
 
 # Include interview routers
 if v9_interview_router:
