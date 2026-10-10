@@ -14,11 +14,11 @@ import logging
 from typing import Any, Dict, List
 
 try:
-    from .otheragent import ask_groq
+    from .otheragent import ask_llm
     from .prompts import CONCLUDE_PANEL_PROMPT, CONCLUDE_PROMPT
     from .stage_utils import as_json, clean_text, validated_panel_member
 except ImportError:
-    from otheragent import ask_groq
+    from otheragent import ask_llm
     from prompts import CONCLUDE_PANEL_PROMPT, CONCLUDE_PROMPT
     from stage_utils import as_json, clean_text, validated_panel_member
 
@@ -37,7 +37,7 @@ def create_conclusion(
     closing_prompt = CONCLUDE_PROMPT.format(
         question_answer_history=as_json(history),
     )
-    closing_message = clean_text(ask_groq(closing_prompt))
+    closing_message = clean_text(ask_llm(closing_prompt))
 
     # 27. Groq selects the panel member to deliver the closing message
     panel_prompt = CONCLUDE_PANEL_PROMPT.format(

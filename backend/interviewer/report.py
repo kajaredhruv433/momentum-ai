@@ -28,12 +28,12 @@ import logging
 from typing import Any, Dict, List, Optional
 
 try:
-    from .otheragent import ask_groq
+    from .otheragent import ask_llm
     from .prompts import REPORT_PROMPT
     from .stage_utils import as_json, clean_text, repair_json
     from .tools.database import mongo
 except ImportError:
-    from otheragent import ask_groq
+    from otheragent import ask_llm
     from prompts import REPORT_PROMPT
     from stage_utils import as_json, clean_text, repair_json
     from .tools.database import mongo
@@ -201,7 +201,7 @@ def generate_report(
         )
         try:
             logger.info("Generating candidate report via otheragent.py (attempt %d)...", attempt + 1)
-            response = ask_groq(current_prompt, max_output_tokens=2048)
+            response = ask_llm(current_prompt, max_output_tokens=2048)
             report = _parse_and_validate_report(response)
 
             # Persist to MongoDB using existing helper

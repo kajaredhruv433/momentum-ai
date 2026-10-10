@@ -1,11 +1,11 @@
 import json
 import re
 try:  # Supports both `python -m backend.main` and legacy root execution.
-    from .otheragent import ask_groq
+    from .otheragent import ask_llm
     from .stage_utils import repair_json
     from .prompts import PANEL_PROMPT
 except ImportError:  # pragma: no cover
-    from otheragent import ask_groq
+    from otheragent import ask_llm
     from stage_utils import repair_json
     from prompts import PANEL_PROMPT
 
@@ -203,7 +203,7 @@ def create_interview_panel(company_requirements):
         + requirements_json
     )
 
-    response = ask_groq(prompt)
+    response = ask_llm(prompt)
 
     try:
         data = _repair_panel_shape(_normalise_panel_shape(_parse_groq_json(response)), company_requirements)
@@ -236,7 +236,7 @@ Job:
 {requirements_json}
 """
         try:
-            retry_response = ask_groq(retry_prompt)
+            retry_response = ask_llm(retry_prompt)
             data = _repair_panel_shape(_normalise_panel_shape(_parse_groq_json(retry_response)), company_requirements)
             _validate_panel(data)
         except Exception:

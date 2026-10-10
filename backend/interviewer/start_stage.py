@@ -14,11 +14,11 @@ import logging
 from typing import Any, Dict, List
 
 try:
-    from .otheragent import ask_groq
+    from .otheragent import ask_llm
     from .prompts import START_PANEL_SELECTION_PROMPT, START_STAGE_PROMPT
     from .stage_utils import as_json, clean_text, validated_panel_member
 except ImportError:
-    from otheragent import ask_groq
+    from otheragent import ask_llm
     from prompts import START_PANEL_SELECTION_PROMPT, START_STAGE_PROMPT
     from stage_utils import as_json, clean_text, validated_panel_member
 
@@ -39,7 +39,7 @@ def create_start_action(
         company_details=as_json(company_details),
         candidate_resume=as_json(candidate_profile),
     )
-    first_question = clean_text(ask_groq(prompt))
+    first_question = clean_text(ask_llm(prompt))
 
     # 2. Select initial evaluation area
     selected_area = areas_to_cover[0] if areas_to_cover else "Introduction"

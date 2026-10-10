@@ -13,9 +13,9 @@ import re
 from typing import Any, List, Optional
 
 try:
-    from .otheragent import ask_groq
+    from .otheragent import ask_llm
 except ImportError:
-    from otheragent import ask_groq
+    from otheragent import ask_llm
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +137,11 @@ def clean_text(value: str) -> str:
 
 
 def prompt_text(prompt: str, *, retries: int = 1) -> str:
-    """Execute ask_groq with retry support for empty responses."""
+    """Execute ask_llm with retry support for empty responses."""
     last_err = None
     for attempt in range(retries + 1):
         try:
-            result = ask_groq(prompt)
+            result = ask_llm(prompt)
             cleaned = clean_text(result)
             if cleaned:
                 return cleaned

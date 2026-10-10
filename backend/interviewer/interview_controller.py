@@ -25,7 +25,7 @@ try:
     from .extended_stage import next_extended_action
     from .final_stage import final_action
     from .normal_stage import next_normal_action
-    from .otheragent import ask_groq
+    from .otheragent import ask_llm
     from .panel import create_interview_panel
     from .prompts import INTERVIEW_PREP_PROMPT
     from .report import generate_report
@@ -54,7 +54,7 @@ except ImportError:
     from extended_stage import next_extended_action
     from final_stage import final_action
     from normal_stage import next_normal_action
-    from otheragent import ask_groq
+    from otheragent import ask_llm
     from panel import create_interview_panel
     from prompts import INTERVIEW_PREP_PROMPT
     from report import generate_report

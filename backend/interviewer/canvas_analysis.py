@@ -317,10 +317,10 @@ def _analyze_with_groq_text(question: str, role: str) -> Dict[str, Any]:
     Fallback: text-only Groq analysis when vision API cannot be reached.
     """
     try:
-        from .otheragent import ask_groq
+        from .otheragent import ask_llm
     except ImportError:
         try:
-            from .otheragent import ask_groq
+            from otheragent import ask_llm
         except ImportError:
             return _empty_analysis("Visual analysis service is temporarily unavailable.")
 
@@ -340,7 +340,7 @@ Return ONLY valid JSON:
 }}"""
 
     try:
-        raw = ask_groq(prompt)
+        raw = ask_llm(prompt)
         return _parse_analysis_json(raw)
     except Exception as exc:
         logger.error("Groq fallback also failed: %s", exc)

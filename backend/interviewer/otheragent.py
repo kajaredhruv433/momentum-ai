@@ -2,8 +2,8 @@
 Top-level AI router.
 
 Application code only needs:
-    from otheragent import ask_groq
-    response = ask_groq(prompt)
+    from otheragent import ask_llm
+    response = ask_llm(prompt)
 
 Routing rule:
     prompt tokens <= 7,500  -> Groq
@@ -77,20 +77,19 @@ def _route(prompt: str, max_output_tokens: Optional[int]) -> str:
     )
 
 
-def ask_groq(
+def ask_llm(
     prompt: str,
     max_output_tokens: Optional[int] = None,
 ) -> str:
     """
-    Public compatibility function.
+    Public AI entry point.
 
-    Despite its historical name, this is now the application's
-    single AI entry point. It routes internally to Groq or Gemini.
+    Routes internally to Groq or Gemini.
     """
     return _route(prompt, max_output_tokens)
 
 
-def ask_groq_chat(
+def ask_llm_chat(
     messages: Sequence[Dict[str, str]],
     max_output_tokens: Optional[int] = None,
 ) -> str:
@@ -113,6 +112,12 @@ def ask_groq_chat(
         parts.append(f"{role}: {content}")
 
     return _route("\n".join(parts), max_output_tokens)
+
+
+# Aliases for backward compatibility
+ask_groq = ask_llm
+askllm = ask_llm
+ask_groq_chat = ask_llm_chat
 
 
 def get_model() -> str:
