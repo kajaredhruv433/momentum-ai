@@ -16,6 +16,11 @@ export default function JobsPage() {
     const [searchQuery, setSearchQuery] = useState("")
     const [appliedMap, setAppliedMap] = useState<Record<string, any>>({})
     const [applyingJobId, setApplyingJobId] = useState<string | null>(null)
+    const [searchMode, setSearchMode] = useState<"text" | "resume">("text")
+    const [semanticResults, setSemanticResults] = useState(false)
+    const [isSearching, setIsSearching] = useState(false)
+    const [searchError, setSearchError] = useState("")
+    const [searchNotice, setSearchNotice] = useState("")
 
     const fetchJobs = async () => {
         try {
@@ -59,6 +64,52 @@ export default function JobsPage() {
     useEffect(() => {
         fetchJobs()
     }, [])
+
+    const handleSearch = async () => {
+        if (searchMode === "text" && searchQuery.trim().length < 2) return
+        setIsSearching(true)
+        setSearchError("")
+        setSearchNotice("")
+        try {
+            let query = searchQuery.trim()
+            if (searchMode === "resume") {
+                const user = auth.currentUser
+                if (!user) throw new Error("Log in to search jobs using your resume.")
+                const params = new URLSearchParams()
+                if (user.email) params.set("email", user.email)
+                params.set("uid", user.uid)
+                const resumeResponse = await fetch(`/api/resume?${params.toString()}`)
+                const resumeResult = await resumeResponse.json()
+                const resume = resumeResult?.data
+                if (!resume) throw new Error("Save your resume before searching by resume.")
+                query = JSON.stringify(resume).slice(0, 1800)
+            }
+            const response = await fetch("/api/jobs/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, limit: 30 })
+            })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.detail || "Job search failed.")
+            setSemanticResults(true)
+            setSearchNotice(Array.isArray(data) && data.some((job: any) => job.searchFallback)
+                ? "Vector search is temporarily unavailable. Showing keyword matches from saved jobs."
+                : "")
+            setJobs(Array.isArray(data) ? data.map((job: any, i: number) => ({
+                ...job,
+                id: String(job.id || job._id),
+                title: job.roleRequired || job.title,
+                company: job.company || "Company",
+                logo: job.logo || (job.company || "M").substring(0, 2).toUpperCase(),
+                color: job.color || ["bg-blue-600", "bg-purple-600", "bg-indigo-600", "bg-pink-600", "bg-emerald-600"][i % 5],
+                tags: job.tags || (Array.isArray(job.skillsRequired) ? job.skillsRequired : [])
+            })) : [])
+        } catch (error: any) {
+            setSearchError(error.message || "Job search failed.")
+        } finally {
+            setIsSearching(false)
+        }
+    }
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -145,29 +196,55 @@ export default function JobsPage() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                    <select aria-label="Job search mode" value={searchMode} onChange={(e) => { setSearchMode(e.target.value as "text" | "resume"); setSemanticResults(false) }} className="h-10 rounded-xl border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-primary/20">
+                        <option value="text">Skills, title, or keyword</option>
+                        <option value="resume">Search by my resume</option>
+                    </select>
                     <div className="relative w-full md:w-80">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <input
                             type="text"
                             placeholder="Search jobs, skills, or companies..."
+                            disabled={searchMode === "resume"}
                             className="w-full pl-10 pr-4 py-2 rounded-xl border bg-background shadow-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => { setSearchQuery(e.target.value); setSemanticResults(false) }}
                         />
                     </div>
-                    <Button variant="outline" size="icon" className="rounded-xl shrink-0">
-                        <Filter className="h-4 w-4" />
+                    <Button onClick={handleSearch} disabled={isSearching || (searchMode === "text" && searchQuery.trim().length < 2)} className="rounded-xl shrink-0">
+                        {isSearching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                        Search
                     </Button>
                 </div>
             </div>
+
+            {searchError && <p role="alert" className="text-sm text-red-600">{searchError}</p>}
+            {searchNotice && <p role="status" className="text-sm text-amber-700">{searchNotice}</p>}
 
             <div className="grid gap-6">
                 {isLoadingJobs ? (
                     [1, 2, 3].map(i => (
                         <div key={i} className="h-40 rounded-2xl bg-muted animate-pulse" />
                     ))
-                ) : jobs.filter(job =>
+                ) : semanticResults ? jobs.length === 0 ? (
+                    <div className="text-center py-20 bg-muted/20 rounded-3xl border-2 border-dashed"><p className="text-muted-foreground">No relevant jobs found.</p></div>
+                ) : jobs.map((job, idx) => {
+                        const application = appliedMap[job.id]
+                        const isApplied = Boolean(application)
+                        const isCompleted = application?.status === "Completed" || application?.status === "Hired" || (application?.matchScore && application.matchScore > 0)
+                        const isHired = application?.status === "Hired" || application?.isHired === true
+                        const isCurrentApplying = applyingJobId === job.id
+                        return (
+                            <Card key={`${job.id}-${idx}`} className="group overflow-hidden border-slate-200 dark:border-slate-800 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300">
+                                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4">
+                                    <div className="flex items-center gap-4"><div className={`h-14 w-14 rounded-2xl ${job.color} flex items-center justify-center text-white font-bold text-xl`}>{job.logo}</div><div><CardTitle>{job.title}</CardTitle><div className="text-muted-foreground">{job.company} · {job.location || "Remote"}</div></div></div>
+                                    <div>{isApplied ? <Button onClick={() => handleGiveInterview(job, application?.id || application?._id)} variant="outline">{isCompleted ? (isHired ? "Hired" : "Completed") : "Give Interview"}</Button> : <Button onClick={() => handleApply(job)} disabled={isCurrentApplying}>{isCurrentApplying ? "Applying..." : "Apply Now"}</Button>}</div>
+                                </CardHeader>
+                                <CardContent><div className="flex flex-wrap gap-2">{job.tags?.map((tag: string, index: number) => <Badge key={`${tag}-${index}`} variant="outline">{tag}</Badge>)}</div><p className="mt-4 text-sm text-muted-foreground">{job.description}</p></CardContent>
+                            </Card>
+                        )
+                    }) : jobs.filter(job =>
                     (job.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                     (job.company || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
                     (job.tags && job.tags.some((t: string) => t.toLowerCase().includes(searchQuery.toLowerCase())))

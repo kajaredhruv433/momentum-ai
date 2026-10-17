@@ -14,7 +14,10 @@ The caller never needs to know which provider was selected.
 
 from __future__ import annotations
 
-from typing import Optional, Sequence, Dict
+from typing import Optional, Sequence, Dict, TypedDict
+
+from langchain_core.runnables import RunnableLambda
+from langgraph.graph import END, START, StateGraph
 
 try:
     from .groqrouter import route_groq
@@ -61,20 +64,53 @@ def _route(prompt: str, max_output_tokens: Optional[int]) -> str:
     if not prompt.strip():
         raise ValueError("prompt cannot be empty")
 
-    prompt_tokens = estimate_tokens(prompt)
+    result = _llm_graph.invoke({
+        "prompt": prompt,
+        "max_output_tokens": max_output_tokens,
+        "provider": "",
+        "response": "",
+    })
+    return result["response"]
 
-    # IMPORTANT:
-    # This decision uses INPUT/PROMPT tokens only.
-    if prompt_tokens <= ROUTING_TOKEN_LIMIT:
-        return route_groq(
-            prompt=prompt,
-            max_output_tokens=max_output_tokens,
-        )
 
-    return route_gemini(
-        prompt=prompt,
-        max_output_tokens=max_output_tokens,
-    )
+class _LLMState(TypedDict, total=False):
+    prompt: str
+    max_output_tokens: Optional[int]
+    provider: str
+    response: str
+
+
+def _select_provider(state: _LLMState) -> _LLMState:
+    # Preserve the existing threshold and token estimate exactly.
+    provider = "groq" if estimate_tokens(state["prompt"]) <= ROUTING_TOKEN_LIMIT else "gemini"
+    return {"provider": provider}
+
+
+def _invoke_groq(state: _LLMState) -> _LLMState:
+    chain = RunnableLambda(lambda values: route_groq(
+        prompt=values["prompt"], max_output_tokens=values.get("max_output_tokens")))
+    return {"response": chain.invoke(state)}
+
+
+def _invoke_gemini(state: _LLMState) -> _LLMState:
+    chain = RunnableLambda(lambda values: route_gemini(
+        prompt=values["prompt"], max_output_tokens=values.get("max_output_tokens")))
+    return {"response": chain.invoke(state)}
+
+
+_llm_builder = StateGraph(_LLMState)
+_llm_builder.add_node("select_provider", _select_provider)
+_llm_builder.add_node("call_groq", _invoke_groq)
+_llm_builder.add_node("call_gemini", _invoke_gemini)
+_llm_builder.add_edge(START, "select_provider")
+_llm_builder.add_conditional_edges(
+    "select_provider",
+    lambda state: state["provider"],
+    {"groq": "call_groq", "gemini": "call_gemini"},
+)
+_llm_builder.add_edge("call_groq", END)
+_llm_builder.add_edge("call_gemini", END)
+_llm_graph = _llm_builder.compile()
 
 
 def ask_llm(

@@ -6,6 +6,7 @@ except ImportError:
     genai = None
 
 from backend.config import GEMINI_API_KEY
+from backend.services.ai_workflows import run_model_call
 
 if GEMINI_API_KEY and genai:
     try:
@@ -139,7 +140,7 @@ async def generate_problems_ai(topic: str, is_coding: bool = True) -> list:
               }}
             ]
             """
-        response = model.generate_content(prompt)
+        response = run_model_call(lambda: model.generate_content(prompt))
         parsed = safe_parse_json(response.text)
         if isinstance(parsed, list) and len(parsed) > 0:
             for p in parsed:
@@ -177,7 +178,7 @@ async def generate_job_description(title: str, role: str, skills: list, experien
         - "requirements": list of 4-6 required qualifications
         - "benefits": list of 3-5 benefits
         """
-        response = model.generate_content(prompt)
+        response = run_model_call(lambda: model.generate_content(prompt))
         parsed = safe_parse_json(response.text)
         if parsed and "overview" in parsed:
             return parsed
@@ -217,7 +218,7 @@ async def evaluate_resume(resume_data: dict) -> dict:
             "improvements": ["area to improve 1", "area to improve 2"]
         }}
         """
-        response = model.generate_content(prompt)
+        response = run_model_call(lambda: model.generate_content(prompt))
         parsed = safe_parse_json(response.text)
         if parsed and "score" in parsed:
             return parsed
@@ -248,7 +249,7 @@ async def generate_interview_questions(topic: str, difficulty: str = "Medium") -
         Return STRICTLY a JSON array of strings:
         ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
         """
-        response = model.generate_content(prompt)
+        response = run_model_call(lambda: model.generate_content(prompt))
         match = re.search(r"\[[\s\S]*\]", response.text)
         if match:
             questions = json.loads(match.group(0))
@@ -298,7 +299,7 @@ async def evaluate_interview_report(topic: str, difficulty: str, questions: list
             "status": "Passed" | "Needs Improvement" | "Failed"
         }}
         """
-        response = model.generate_content(prompt)
+        response = run_model_call(lambda: model.generate_content(prompt))
         parsed = safe_parse_json(response.text)
         if parsed and "score" in parsed:
             return parsed
