@@ -4,7 +4,7 @@ report.py
 Generates the comprehensive candidate evaluation report:
 Requirement 29:
 - Uses REPORT_PROMPT with company_details, candidate_profile, question_answer_history.
-- Sent to otheragent.py -> Groq.
+- Sent to llm.py -> Gemini.
 - Strictly parses and validates JSON:
   overall_match_percentage (0-100)
   job_role_match (0-100)
@@ -28,12 +28,12 @@ import logging
 from typing import Any, Dict, List, Optional
 
 try:
-    from .otheragent import ask_llm
+    from .llm import ask_llm
     from .prompts import REPORT_PROMPT
     from .stage_utils import as_json, clean_text, repair_json
     from .tools.database import mongo
 except ImportError:
-    from otheragent import ask_llm
+    from llm import ask_llm
     from prompts import REPORT_PROMPT
     from stage_utils import as_json, clean_text, repair_json
     from .tools.database import mongo
@@ -109,7 +109,7 @@ def _build_fallback_report(
     candidate_profile: Dict[str, Any],
     history: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Build a coherent, deterministic report if Groq response cannot be parsed."""
+    """Build a coherent, deterministic report if Gemini response cannot be parsed."""
     answered = [
         h for h in history
         if (h.get("candidate_answer") or h.get("answer"))
@@ -183,8 +183,8 @@ def generate_report(
     canvas_submissions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
-    Generate evidence-based structured evaluation report using otheragent.py and persist to MongoDB.
-    Requirement 29: Strictly uses REPORT_PROMPT from prompts.py passed to otheragent.py.
+    Generate evidence-based structured evaluation report using llm.py and persist to MongoDB.
+    Requirement 29: Strictly uses REPORT_PROMPT from prompts.py passed to llm.py.
     """
     canvas_context = _build_canvas_context(canvas_submissions or [])
 
@@ -200,7 +200,7 @@ def generate_report(
             prompt + "\n\nCRITICAL: Return ONLY valid, parseable JSON matching the exact schema. No markdown, no preface."
         )
         try:
-            logger.info("Generating candidate report via otheragent.py (attempt %d)...", attempt + 1)
+            logger.info("Generating candidate report via llm.py (attempt %d)...", attempt + 1)
             response = ask_llm(current_prompt, max_output_tokens=2048)
             report = _parse_and_validate_report(response)
 

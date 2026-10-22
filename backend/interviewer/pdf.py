@@ -340,7 +340,6 @@ SKILL_DATABASE = [
     "MySQL",
     "PostgreSQL",
     "Redis",
-    "Qdrant",
     "Pinecone",
     "Firebase",
 

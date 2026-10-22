@@ -92,9 +92,7 @@ export default function JobsPage() {
             const data = await response.json()
             if (!response.ok) throw new Error(data.detail || "Job search failed.")
             setSemanticResults(true)
-            setSearchNotice(Array.isArray(data) && data.some((job: any) => job.searchFallback)
-                ? "Vector search is temporarily unavailable. Showing keyword matches from saved jobs."
-                : "")
+            setSearchNotice("")
             setJobs(Array.isArray(data) ? data.map((job: any, i: number) => ({
                 ...job,
                 id: String(job.id || job._id),

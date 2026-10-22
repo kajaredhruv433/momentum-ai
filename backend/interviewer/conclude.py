@@ -2,8 +2,8 @@
 conclude.py
 
 Handles the conclusion of the interview:
-1. Groq generates professional closing message thanking candidate (CONCLUDE_PROMPT).
-2. Groq chooses the closing panel member (CONCLUDE_PANEL_PROMPT).
+1. Gemini generates professional closing message thanking candidate (CONCLUDE_PROMPT).
+2. Gemini chooses the closing panel member (CONCLUDE_PANEL_PROMPT).
 3. Uses existing voice.py metadata for the selected panel member.
 4. The client requests ElevenLabs TTS for the closing message.
 5. The backend waits for playback completion before generating the evaluation report.
@@ -14,11 +14,11 @@ import logging
 from typing import Any, Dict, List
 
 try:
-    from .otheragent import ask_llm
+    from .llm import ask_llm
     from .prompts import CONCLUDE_PANEL_PROMPT, CONCLUDE_PROMPT
     from .stage_utils import as_json, clean_text, validated_panel_member
 except ImportError:
-    from otheragent import ask_llm
+    from llm import ask_llm
     from prompts import CONCLUDE_PANEL_PROMPT, CONCLUDE_PROMPT
     from stage_utils import as_json, clean_text, validated_panel_member
 
@@ -33,13 +33,13 @@ def create_conclusion(
     """
     Generate the closing message and choose the closing panel member.
     """
-    # 26. Groq generates closing message
+    # 26. Gemini generates closing message
     closing_prompt = CONCLUDE_PROMPT.format(
         question_answer_history=as_json(history),
     )
     closing_message = clean_text(ask_llm(closing_prompt))
 
-    # 27. Groq selects the panel member to deliver the closing message
+    # 27. Gemini selects the panel member to deliver the closing message
     panel_prompt = CONCLUDE_PANEL_PROMPT.format(
         panels=as_json(panel),
         closing_message=closing_message,

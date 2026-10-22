@@ -1,6 +1,6 @@
 """
 Solve Problem Module for Momentum Candidate Platform.
-Generates 5 AI-powered technical and conceptual interview questions using ask_llm from backend/interviewer/otheragent.py.
+Generates 5 AI-powered technical and conceptual interview questions using ask_llm from backend/interviewer/llm.py.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 try:
-    from backend.interviewer.otheragent import ask_llm
+    from backend.interviewer.llm import ask_llm
 except ImportError:
-    from interviewer.otheragent import ask_llm
+    from interviewer.llm import ask_llm
 
 router = APIRouter(prefix="/api/candidate/solve-problem", tags=["candidate-solve-problem"])
 
@@ -127,7 +127,7 @@ def _generate_fallback_problems(topic: str, is_coding: bool = True) -> List[Dict
 
 def generate_5_problems(topic: str, is_coding: bool = True) -> List[Dict[str, Any]]:
     """
-    Generate exactly 5 problems using ask_llm from backend/interviewer/otheragent.py.
+    Generate exactly 5 problems using ask_llm from backend/interviewer/llm.py.
     Returns a list of 5 well-structured problem dictionaries.
     """
     topic_clean = topic.strip() if topic else "Data Structures & Algorithms"

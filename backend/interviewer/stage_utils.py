@@ -13,9 +13,9 @@ import re
 from typing import Any, List, Optional
 
 try:
-    from .otheragent import ask_llm
+    from .llm import ask_llm
 except ImportError:
-    from otheragent import ask_llm
+    from llm import ask_llm
 
 logger = logging.getLogger(__name__)
 
@@ -145,10 +145,10 @@ def prompt_text(prompt: str, *, retries: int = 1) -> str:
             cleaned = clean_text(result)
             if cleaned:
                 return cleaned
-            logger.warning("Empty response from Groq on attempt %d", attempt + 1)
+            logger.warning("Empty response from Gemini on attempt %d", attempt + 1)
         except Exception as exc:
             last_err = exc
-            logger.warning("Groq prompt attempt %d failed: %s", attempt + 1, exc)
+            logger.warning("Gemini prompt attempt %d failed: %s", attempt + 1, exc)
 
     if last_err:
         raise last_err
@@ -240,7 +240,7 @@ def validated_panel_member(prompt: str, panel: dict) -> str:
 
 def parse_json_array(prompt: str) -> List[str]:
     """
-    Parse a JSON array of strings from Groq.
+    Parse a JSON array of strings from Gemini.
     Robustly removes markdown blocks and repairs delimiters / syntax.
     """
     for attempt in range(2):
@@ -255,7 +255,7 @@ def parse_json_array(prompt: str) -> List[str]:
         except Exception as exc:
             logger.warning("Failed to parse JSON array on attempt %d: %s", attempt + 1, exc)
 
-    logger.warning("Returning default evaluation areas due to malformed Groq JSON response.")
+    logger.warning("Returning default evaluation areas due to malformed Gemini JSON response.")
     return ["Core Technical Skills", "System Design & Architecture", "Debugging & Problem Solving", "Behavioral & Collaboration"]
 
 

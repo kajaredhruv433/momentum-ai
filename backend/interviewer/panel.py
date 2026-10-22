@@ -1,33 +1,33 @@
 import json
 import re
 try:  # Supports both `python -m backend.main` and legacy root execution.
-    from .otheragent import ask_llm
+    from .llm import ask_llm
     from .stage_utils import repair_json
     from .prompts import PANEL_PROMPT
 except ImportError:  # pragma: no cover
-    from otheragent import ask_llm
+    from llm import ask_llm
     from stage_utils import repair_json
     from prompts import PANEL_PROMPT
 
 
 
-def _parse_groq_json(response):
+def _parse_model_json(response):
     if isinstance(response, dict):
         return response
 
     if not isinstance(response, str):
-        raise ValueError("Groq response is not a string or dictionary.")
+        raise ValueError("Gemini response is not a string or dictionary.")
 
     try:
         return repair_json(response)
     except Exception as exc:
-        raise ValueError(f"Could not parse valid JSON from Groq response: {exc}") from exc
+        raise ValueError(f"Could not parse valid JSON from Gemini response: {exc}") from exc
 
 
 def _normalise_panel_shape(data):
     """Accept the common list form, then use the existing strict validator.
 
-    Groq sometimes follows the member schema but returns ``[{...}, {...}]``
+    Gemini sometimes follows the member schema but returns ``[{...}, {...}]``
     instead of the requested keyed object. This conversion is structural only:
     it does not invent or alter a panel member.
     """
@@ -206,7 +206,7 @@ def create_interview_panel(company_requirements):
     response = ask_llm(prompt)
 
     try:
-        data = _repair_panel_shape(_normalise_panel_shape(_parse_groq_json(response)), company_requirements)
+        data = _repair_panel_shape(_normalise_panel_shape(_parse_model_json(response)), company_requirements)
         _validate_panel(data)
 
     except Exception:
@@ -237,7 +237,7 @@ Job:
 """
         try:
             retry_response = ask_llm(retry_prompt)
-            data = _repair_panel_shape(_normalise_panel_shape(_parse_groq_json(retry_response)), company_requirements)
+            data = _repair_panel_shape(_normalise_panel_shape(_parse_model_json(retry_response)), company_requirements)
             _validate_panel(data)
         except Exception:
             # Fallback deterministic panel derived from company requirements

@@ -8,7 +8,7 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
         <span className="spinner" style={{ width: '28px', height: '28px', margin: '0 auto 16px' }} />
         <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Generating Evidence-Based Candidate Report...</h3>
         <p style={{ color: 'var(--text-secondary)', marginTop: '8px' }}>
-          Querying Groq router via otheragent.py with full interview transcripts and resume profile.
+          Querying the LangChain Gemini model via llm.py with full interview transcripts and resume profile.
         </p>
       </div>
     );

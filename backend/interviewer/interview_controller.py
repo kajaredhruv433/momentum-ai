@@ -6,8 +6,8 @@ Coordinates the complete multi-panel AI interview lifecycle:
   -> NORMAL -> EXTENDED -> FINAL -> CONCLUDING -> WAITING_FOR_CLOSING_SPEECH
   -> REPORTING -> COMPLETED
 - Server-authoritative timer (starts when the client begins playing the opening question)
-- Groq reasoning brain (via otheragent.py - IMMUTABLE)
-- Existing panel.py, resume.py, voice.py, mongo.py, qdrant.py
+- Gemini reasoning chain (via llm.py - IMMUTABLE)
+- Existing panel.py, resume.py, voice.py, and MongoDB persistence
 - Uniform candidate answer pipeline (voice & typing)
 - Gated report generation strictly after closing speech completion
 """
@@ -25,7 +25,7 @@ try:
     from .extended_stage import next_extended_action
     from .final_stage import final_action
     from .normal_stage import next_normal_action
-    from .otheragent import ask_llm
+    from .llm import ask_llm
     from .panel import create_interview_panel
     from .prompts import INTERVIEW_PREP_PROMPT
     from .report import generate_report
@@ -46,7 +46,7 @@ try:
         WAITING_FOR_FIRST_QUESTION,
     )
     from .timer import InterviewTimer
-    from .tools.database import mongo, qdrant
+    from .tools.database import mongo
     from .voice import assign_voices_to_panel
 except ImportError:
     import resume
@@ -54,7 +54,7 @@ except ImportError:
     from extended_stage import next_extended_action
     from final_stage import final_action
     from normal_stage import next_normal_action
-    from otheragent import ask_llm
+    from llm import ask_llm
     from panel import create_interview_panel
     from prompts import INTERVIEW_PREP_PROMPT
     from report import generate_report
@@ -75,7 +75,7 @@ except ImportError:
         WAITING_FOR_FIRST_QUESTION,
     )
     from timer import InterviewTimer
-    from tools.database import mongo, qdrant
+    from tools.database import mongo
     from voice import assign_voices_to_panel
 
 logger = logging.getLogger(__name__)
@@ -213,8 +213,8 @@ class InterviewController:
         """
         Execute full preparation and start pipeline:
         1. Extract resume profile via existing resume.py.
-        2. Index resume into Qdrant Cloud (resilient to network issues).
-        3. Identify evaluation areas via INTERVIEW_PREP_PROMPT -> Groq.
+        2. Persist interview and candidate context in MongoDB.
+        3. Identify evaluation areas via INTERVIEW_PREP_PROMPT -> Gemini.
         4. Generate interview panel via existing panel.py.
         5. Assign unique voices via existing voice.py.
         6. Generate opening question + select panel speaker via start_stage.py.
@@ -278,22 +278,7 @@ class InterviewController:
         except Exception as exc:
             logger.warning("MongoDB initial persistence warning: %s", exc)
 
-        # 2. Qdrant Cloud Semantic Indexing
-        try:
-            chunk_size = 1000
-            for idx in range(0, len(resume_text), chunk_size):
-                chunk = resume_text[idx : idx + chunk_size]
-                qdrant.store_resume_chunk(
-                    point_id=None,
-                    candidate_id=candidate_id,
-                    text=chunk,
-                    metadata={"interview_id": interview_id, "chunk_index": idx // chunk_size},
-                )
-        except Exception as exc:
-            logger.warning("Qdrant semantic indexing warning (%s); proceeding with interview", exc)
-            mongo.save_interview_event(interview_id, "qdrant_indexing_skipped", {"error": str(exc)})
-
-        # 3. Areas to cover (Groq via otheragent.py)
+        # 2. Areas to cover (Gemini via llm.py)
         prep_prompt = INTERVIEW_PREP_PROMPT.format(
             role=company_details.get("role", "Developer"),
             company_requirements=as_json(company_details),
@@ -303,10 +288,10 @@ class InterviewController:
         state["areas_to_cover"] = areas
         self._broadcast(interview_id, "direction_selected", {"areas_to_cover": areas})
 
-        # 4. Generate Interview Panel
+        # 3. Generate Interview Panel
         raw_panel = create_interview_panel(company_details)
 
-        # 5. Assign Distinct Voices
+        # 4. Assign Distinct Voices
         panel_with_voices = assign_voices_to_panel(raw_panel)
         state["panel"] = panel_with_voices
         state["stage"] = PANEL_READY

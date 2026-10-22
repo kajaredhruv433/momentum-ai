@@ -94,7 +94,7 @@ async def save_resume_candidate(request: Request):
 @router.post("/analyze")
 async def analyze_candidate_resume(request: Request):
     """
-    Analyzes resume data with AI via ask_llm from backend/interviewer/otheragent.py
+    Analyzes resume data with AI via ask_llm from backend/interviewer/llm.py
     and saves the analysis to database.
     """
     from backend.candidate.resume_analyser.resume_analyser import analyze_resume

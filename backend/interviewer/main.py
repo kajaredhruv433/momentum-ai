@@ -38,7 +38,7 @@ logger = logging.getLogger("momentum.main")
 
 app = FastAPI(
     title="Momentum AI Interview Platform",
-    description="Multi-panel AI Interview Platform with ElevenLabs speech and Groq reasoning.",
+    description="Multi-panel AI Interview Platform with ElevenLabs speech and Gemini reasoning.",
     version="1.0.0",
 )
 

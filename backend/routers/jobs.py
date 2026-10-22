@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from datetime import datetime, timedelta
@@ -8,24 +8,8 @@ from backend.database import get_db, serialize_doc, serialize_docs
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-async def _index_job_in_background(job: dict, mongo_id: str):
-    """Index after returning the Mongo-backed create response; retry failures during search."""
-    db = get_db()
-    try:
-        from backend.services.job_vector_search import index_job
-        await index_job(job, mongo_id)
-        await db.jobs.update_one({"_id": ObjectId(mongo_id)}, {"$set": {"vectorIndexed": True}})
-    except Exception as exc:
-        try:
-            from backend.services.job_vector_search import qdrant_error_summary
-            detail = qdrant_error_summary(exc)
-        except Exception:
-            detail = type(exc).__name__
-        print(f"Job {mongo_id} saved to MongoDB but Qdrant indexing failed: {detail}")
-
-
-async def _mongo_text_fallback(db, query: str, limit: int):
-    """Return keyword-ranked Mongo jobs when the vector service cannot be reached."""
+async def _mongo_text_search(db, query: str, limit: int):
+    """Search and rank jobs directly from MongoDB fields."""
     import re
 
     stop_words = {"the", "and", "for", "with", "from", "that", "this", "are", "you", "your",
@@ -53,7 +37,6 @@ async def _mongo_text_fallback(db, query: str, limit: int):
     result = serialize_docs([doc for _, doc in ranked[:limit]])
     for (score, _), job in zip(ranked[:limit], result):
         job["relevanceScore"] = score
-        job["searchFallback"] = True
     return result
 
 class CreateJobRequest(BaseModel):
@@ -104,44 +87,10 @@ async def list_jobs(recruiterUid: Optional[str] = Query(None)):
 @router.post("/search")
 async def semantic_job_search(req: JobSearchRequest):
     db = get_db()
-    try:
-        from backend.services.job_vector_search import index_job, search_jobs
-        # Lazily index jobs created before semantic indexing was introduced.
-        pending = await db.jobs.find({"vectorIndexed": {"$ne": True}}).to_list(length=500)
-        for job in pending:
-            await index_job(job, str(job["_id"]))
-            await db.jobs.update_one({"_id": job["_id"]}, {"$set": {"vectorIndexed": True}})
-        matches = await search_jobs(req.query, req.limit)
-    except Exception as exc:
-        try:
-            from backend.services.job_vector_search import qdrant_error_summary
-            detail = qdrant_error_summary(exc)
-        except Exception:
-            detail = type(exc).__name__
-        print(f"Qdrant semantic search unavailable; using MongoDB keyword fallback: {detail}")
-        return await _mongo_text_fallback(db, req.query, req.limit)
-    ids = []
-    scores = {}
-    for match in matches:
-        try:
-            oid = ObjectId(match["mongo_id"])
-        except Exception:
-            continue
-        if oid not in ids:
-            ids.append(oid)
-            scores[str(oid)] = match["score"]
-    if not ids:
-        return []
-    docs = await db.jobs.find({"_id": {"$in": ids}}).to_list(length=len(ids))
-    by_id = {str(doc["_id"]): doc for doc in docs}
-    ordered = [by_id[str(oid)] for oid in ids if str(oid) in by_id]
-    result = serialize_docs(ordered)
-    for job in result:
-        job["relevanceScore"] = scores.get(job["id"], 0)
-    return result
+    return await _mongo_text_search(db, req.query, req.limit)
 
 @router.post("", status_code=201)
-async def create_job(req: CreateJobRequest, background_tasks: BackgroundTasks):
+async def create_job(req: CreateJobRequest):
     db = get_db()
 
     skills = req.skillsRequired
@@ -183,9 +132,6 @@ async def create_job(req: CreateJobRequest, background_tasks: BackgroundTasks):
 
     result = await db.jobs.insert_one(new_job)
     new_job["_id"] = result.inserted_id
-    new_job["vectorIndexed"] = False
-    await db.jobs.update_one({"_id": result.inserted_id}, {"$set": {"vectorIndexed": False}})
-    background_tasks.add_task(_index_job_in_background, new_job, str(result.inserted_id))
     return serialize_doc(new_job)
 
 @router.get("/{job_id}")

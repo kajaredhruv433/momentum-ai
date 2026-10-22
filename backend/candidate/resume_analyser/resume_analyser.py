@@ -1,6 +1,6 @@
 """
 Resume Analyser Module for Momentum Candidate Platform.
-Analyzes resumes using AI via ask_llm from backend/interviewer/otheragent.py.
+Analyzes resumes using AI via ask_llm from backend/interviewer/llm.py.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 try:
-    from backend.interviewer.otheragent import ask_llm
+    from backend.interviewer.llm import ask_llm
 except ImportError:
-    from interviewer.otheragent import ask_llm
+    from interviewer.llm import ask_llm
 
 from backend.database import get_db, serialize_doc
 
@@ -100,7 +100,7 @@ def analyze_resume(
     target_company: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Perform deep AI analysis of candidate resume using ask_llm from backend/interviewer/otheragent.py.
+    Perform deep AI analysis of candidate resume using ask_llm from backend/interviewer/llm.py.
     """
     personal = resume_data.get("personal", {})
     role = target_role or personal.get("role") or "Software Engineer"

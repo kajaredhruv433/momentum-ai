@@ -28,7 +28,7 @@ Full-Stack Python Backend Engineer with 4 years of experience designing high-thr
 SKILLS
 - Languages: Python, SQL, JavaScript, Bash
 - Frameworks: FastAPI, Django, Flask, SQLAlchemy, Celery, Pydantic
-- Databases: PostgreSQL, Redis, MongoDB, Qdrant
+- Databases: PostgreSQL, Redis, MongoDB
 - Cloud & DevOps: Docker, AWS (EC2, S3), Git, CI/CD, Linux
 - Concepts: Distributed Systems, System Design, Caching, Event-Driven Architecture
 

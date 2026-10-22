@@ -2,32 +2,22 @@
 canvas_analysis.py
 
 Analyzes system-design canvas diagrams submitted by candidates during the interview.
-Uses Google Gemini Vision REST API via httpx with JSON-mode output to visually inspect the candidate's drawing,
+Uses the shared LangChain Gemini vision model to inspect the candidate's drawing,
 extracting labeled components, directional data flows / pipeline relationships, detailed architectural assessment, and suggestions.
 """
 from __future__ import annotations
 
-import base64
 import json
 import logging
-import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import httpx
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 logger = logging.getLogger(__name__)
-
-# Preferred fast, vision-capable Gemini models
-GEMINI_MODELS = [
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-flash-latest",
-]
 
 VISION_PROMPT = """You are a senior system design interview evaluator assessing a candidate's architectural diagram drawn on a canvas during a technical interview.
 
@@ -60,21 +50,6 @@ Return ONLY valid JSON matching this schema:
   "design_notes": "Detailed architectural assessment of the drawing, explaining how components interact, communication protocols, bottlenecks, and scalability.",
   "suggestions": ["Actionable recommendation 1", "Actionable recommendation 2", "Actionable recommendation 3"]
 }}"""
-
-
-def _get_gemini_api_keys() -> List[str]:
-    """Collect all configured Gemini API keys from environment."""
-    keys: List[str] = []
-    for i in range(1, 21):
-        key = os.getenv(f"GEMINI_API_KEY_{i}", "").strip()
-        if key and key not in keys:
-            keys.append(key)
-
-    single_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if single_key and single_key not in keys:
-        keys.append(single_key)
-
-    return keys
 
 
 def _stringify_item(item: Any) -> str:
@@ -236,112 +211,41 @@ def analyze_canvas_diagram(
     if len(image_data_base64) < 50:
         return _empty_analysis("The canvas appears to be empty.")
 
-    api_keys = _get_gemini_api_keys()
-    if not api_keys:
-        logger.error("No Gemini API keys found in environment for canvas vision analysis.")
-        return _analyze_with_groq_text(question, role)
-
     prompt_text = VISION_PROMPT.format(
         question=question or "System Architecture Diagram",
         role=role or "Software Engineer",
     )
 
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "inline_data": {
-                            "mime_type": "image/png",
-                            "data": image_data_base64,
-                        }
-                    },
-                    {
-                        "text": prompt_text,
-                    },
-                ]
-            }
-        ],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "thinkingConfig": {
-                "thinkingBudget": 0,
-            },
-            "temperature": 0.1,
-            "maxOutputTokens": 2048,
-        },
-    }
-
-    last_error: Optional[Exception] = None
-    with httpx.Client(timeout=20.0) as client:
-        for api_key in api_keys:
-            for model_name in GEMINI_MODELS:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                try:
-                    logger.info("Calling Gemini Vision (%s) for canvas analysis...", model_name)
-                    response = client.post(url, json=payload)
-
-                    if response.status_code == 200:
-                        res_json = response.json()
-                        candidates = res_json.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            raw_text = "".join(p.get("text", "") for p in parts if "text" in p)
-                            if raw_text:
-                                logger.info("Gemini vision analysis successful using %s", model_name)
-                                return _parse_analysis_json(raw_text)
-                    elif response.status_code in (429, 403, 401):
-                        logger.warning(
-                            "Gemini API key returned HTTP %d for %s. Trying next key...",
-                            response.status_code,
-                            model_name,
-                        )
-                        break
-                    else:
-                        logger.warning(
-                            "Gemini Vision call to %s returned HTTP %d: %.200s",
-                            model_name,
-                            response.status_code,
-                            response.text,
-                        )
-                except Exception as exc:
-                    logger.warning("Error calling Gemini Vision (%s): %s", model_name, exc)
-                    last_error = exc
-
-    logger.warning("Gemini Vision analysis failed with all keys (%s). Falling back to Groq text.", last_error)
-    return _analyze_with_groq_text(question, role)
-
-
-def _analyze_with_groq_text(question: str, role: str) -> Dict[str, Any]:
-    """
-    Fallback: text-only Groq analysis when vision API cannot be reached.
-    """
     try:
-        from .otheragent import ask_llm
-    except ImportError:
-        try:
-            from otheragent import ask_llm
-        except ImportError:
-            return _empty_analysis("Visual analysis service is temporarily unavailable.")
+        from .llm import analyze_image
+        raw = analyze_image(prompt_text, image_data_base64)
+        return _parse_analysis_json(raw)
+    except Exception as exc:
+        logger.warning("Gemini vision analysis failed; trying text fallback: %s", exc)
+        return _analyze_with_gemini_text(question, role)
+
+
+def _analyze_with_gemini_text(question: str, role: str) -> Dict[str, Any]:
+    """Keep the previous text-only recovery path using the shared Gemini chain."""
+    from .llm import ask_llm
 
     prompt = f"""You are a senior system design expert.
 
 A candidate is being interviewed for the role of: {role}
 They were asked: "{question}"
 
-Since visual image analysis was temporarily unavailable, provide standard reference architecture feedback for this question.
+Visual analysis was unavailable. Return conservative reference architecture guidance for this question without claiming to have seen the candidate's drawing.
 
 Return ONLY valid JSON:
 {{
   "components": [],
   "relationships": [],
-  "design_notes": "Note: Visual analysis fallback. Please label diagram components and draw connecting arrows.",
+  "design_notes": "Visual analysis was unavailable. Please label diagram components and draw connecting arrows.",
   "suggestions": ["Add labeled components (e.g., API Server, Database, Cache)", "Draw arrows to indicate communication flows"]
 }}"""
 
     try:
-        raw = ask_llm(prompt)
-        return _parse_analysis_json(raw)
+        return _parse_analysis_json(ask_llm(prompt))
     except Exception as exc:
-        logger.error("Groq fallback also failed: %s", exc)
+        logger.error("Gemini text fallback also failed: %s", exc)
         return _empty_analysis("Analysis service unavailable.")
