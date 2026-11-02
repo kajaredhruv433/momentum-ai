@@ -19,6 +19,7 @@ from backend.routers import (
     problems,
     interviews
 )
+from backend.routers import ai
 from backend.config import PORT, HOST
 
 # Import Momentum authoritative interview platform routers & controllers
@@ -66,6 +67,7 @@ app.include_router(recruiter.router)
 app.include_router(resume.router)
 app.include_router(problems.router)
 app.include_router(interviews.router)
+app.include_router(ai.router)
 app.include_router(candidate_solve_problem_router)
 app.include_router(candidate_resume_analyser_router)
 

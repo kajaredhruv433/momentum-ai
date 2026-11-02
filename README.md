@@ -33,9 +33,7 @@ The root `start-dev.bat` starts the backend and portal frontend. The interview r
 
 ## LLM architecture
 
-Interview prompts use one shared LangChain entry point: [`backend/interviewer/llm.py`](backend/interviewer/llm.py). It constructs a LangChain Expression Language (LCEL) chain from a prompt-to-message runnable, `ChatGoogleGenerativeAI`, and `StrOutputParser`. All interview stages and supporting candidate analysis use the same `ask_llm` interface. Canvas images use the same Gemini model integration through LangChain's multimodal message format.
-
-There is one backend Gemini credential, `GEMINI_API_KEY`. No Groq provider, provider router, numbered key pool, token-threshold routing, or key rotation is used. `GEMINI_MODEL` selects the Gemini model (default `gemini-2.5-flash`). `GEMINI_MAX_OUTPUT_TOKENS` controls the default response limit.
+Interview prompts use one shared entry point: [`backend/interviewer/llm.py`](backend/interviewer/llm.py). It creates an OpenAI-compatible client for Baseten and reads `BASETEN_API_KEY`, `BASETEN_BASE_URL`, and `BASETEN_MODEL` from `backend/.env`. Recruitment AI features use the same Baseten credentials through [`backend/services/baseten_service.py`](backend/services/baseten_service.py). The key stays on the backend and is never needed in the browser.
 
 The model architecture does not own interview lifecycle logic. Existing stage prompts and validators still decide whether to continue, conclude, draw, or ask an advanced question; the controller still owns turn-taking, timers, persistence, and report visibility.
 
@@ -115,15 +113,17 @@ BASETEN_MODEL=meta-models/muse-spark-open-1026
 BASETEN_MAX_OUTPUT_TOKENS=2048
 ```
 
-Fill in the other backend values required by the features you use. Do not commit real credentials. The frontend example includes a Gemini variable for existing client-side recruitment AI features; use the same Google AI Studio key if those features are enabled.
+Fill in the other backend values required by the features you use. Do not commit real credentials. Keep model provider credentials in `backend/.env`; frontend environment files should contain only public configuration such as the backend URL.
 
 ### Configuration reference
 
 | Variable | Used by | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | Backend | Single Gemini API key used by LangChain model calls |
-| `GEMINI_MODEL` | Backend | Gemini model name; defaults to `gemini-2.5-flash` |
-| `GEMINI_MAX_OUTPUT_TOKENS` | Backend | Default generated response token limit |
+| `BASETEN_API_KEY` | Backend | Baseten API key for text and vision model calls |
+| `BASETEN_BASE_URL` | Backend | OpenAI-compatible endpoint; defaults to `https://inference.baseten.co/v1` |
+| `BASETEN_MODEL` | Backend | Baseten model; defaults to `meta-models/muse-spark-open-1026` |
+| `BASETEN_MAX_OUTPUT_TOKENS` | Backend | Interview model response limit |
+| `BASETEN_REASONING_EFFORT` | Backend | Muse Spark reasoning budget; defaults to `low` for responsive interview turns |
 | `ELEVENLABS_API_KEY` | Backend | ElevenLabs STT and TTS |
 | `ELEVENLABS_STT_MODEL` | Backend | STT model; defaults to `scribe_v2_realtime` |
 | `ELEVENLABS_TTS_MODEL` | Backend | TTS model; defaults to `eleven_flash_v2_5` |
@@ -131,9 +131,7 @@ Fill in the other backend values required by the features you use. Do not commit
 | `MONGODB_DATABASE` / `DB_NAME` | Backend | Database name |
 | `HOST`, `PORT` | Backend | FastAPI bind address and port |
 | `NEXT_PUBLIC_API_URL` | Frontend | FastAPI base URL, normally `http://127.0.0.1:8000` |
-| `GEMINI_API_KEY` | Frontend | Existing recruitment-side Gemini features; configure only if those client features are enabled |
-
-The interview room uses the backend Baseten key. The ElevenLabs key and database credentials belong in the backend environment file.
+The interview room and recruitment AI use the backend Baseten key. Do not put this key in frontend environment files. The ElevenLabs key and database credentials also belong in the backend environment file.
 
 ### Run
 

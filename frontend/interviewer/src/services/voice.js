@@ -94,12 +94,43 @@ export class ElevenLabsVoiceService {
     this.stopSpeaking(); this.speaking = true; this.onSpeakingStateCallback?.({ speaking: true, speaker });
     try {
       const params = new URLSearchParams({ text, speaker: speaker || '', gender: gender || '', interview_id: this.interviewId || '' });
-      const response = await fetch(`/api/interviews/${this.interviewId}/tts?${params}`); if (!response.ok) throw new Error('TTS request failed');
-      const url = URL.createObjectURL(await response.blob()); const audio = new Audio(url); this.currentAudio = audio;
-      audio.onended = () => { URL.revokeObjectURL(url); this.speaking = false; this.currentAudio = null; this.onSpeakingStateCallback?.({ speaking: false, speaker }); done?.(); };
-      await audio.play();
-    } catch (error) { console.warn('ElevenLabs TTS failed', error); this.speaking = false; this.onSpeakingStateCallback?.({ speaking: false, speaker }); done?.(); }
+      const response = await fetch(`/api/interviews/${this.interviewId}/tts?${params}`);
+      if (!response.ok) throw new Error(`TTS request failed (${response.status})`);
+      const audioBytes = await response.arrayBuffer();
+      if (!audioBytes.byteLength) throw new Error('TTS returned an empty audio file');
+
+      // The start button unlocks this AudioContext before the slower interview
+      // API calls. Playing a fetched HTMLAudioElement later can be blocked by
+      // browser autoplay rules once that original click activation has expired.
+      const context = this._context();
+      if (context.state === 'suspended') await context.resume();
+      const audioBuffer = await context.decodeAudioData(audioBytes);
+      const source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(context.destination);
+      this.currentAudio = source;
+      source.onended = () => {
+        if (this.currentAudio !== source) return;
+        this.speaking = false;
+        this.currentAudio = null;
+        this.onSpeakingStateCallback?.({ speaking: false, speaker });
+        done?.();
+      };
+      source.start();
+    } catch (error) {
+      console.error('ElevenLabs speech playback failed', error);
+      this.speaking = false;
+      this.currentAudio = null;
+      this.onSpeakingStateCallback?.({ speaking: false, speaker });
+      this.onStatusCallback?.('Speech playback failed. Use Replay question to try again.');
+    }
   }
-  stopSpeaking() { if (this.currentAudio) { this.currentAudio.pause(); this.currentAudio = null; } this.speaking = false; }
+  stopSpeaking() {
+    if (this.currentAudio) {
+      try { this.currentAudio.stop(); } catch (_) {}
+      this.currentAudio = null;
+    }
+    this.speaking = false;
+  }
   leaveChannel() { this.stopListening(); this.stopSpeaking(); this.socket?.close(); this.processor?.disconnect(); this.stream?.getTracks().forEach(t => t.stop()); }
 }

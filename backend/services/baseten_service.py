@@ -17,6 +17,8 @@ def get_client() -> Optional[OpenAI]:
     return OpenAI(
         base_url=BASETEN_BASE_URL,
         api_key=BASETEN_API_KEY,
+        timeout=60.0,
+        max_retries=2,
     )
 
 
@@ -25,6 +27,8 @@ def generate_text(prompt: str, temperature: float = 0.2) -> str:
     client = get_client()
     if not client:
         raise RuntimeError("BASETEN_API_KEY is not configured.")
+    if not prompt.strip():
+        raise ValueError("prompt cannot be empty.")
     response = client.chat.completions.create(
         model=BASETEN_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -187,7 +191,15 @@ async def generate_problems_ai(topic: str, is_coding: bool = True) -> list:
     return generate_mock_problems(topic, is_coding)
 
 
-async def generate_job_description(title: str, role: str, skills: list, experience: str, company: str = "Momentum AI") -> dict:
+async def generate_job_description(
+    title: str,
+    role: str,
+    skills: list,
+    experience: str,
+    company: str = "Momentum AI",
+    location: str = "Remote",
+    salary: str = "Competitive",
+) -> dict:
     if not BASETEN_API_KEY:
         return {
             "overview": f"We are hiring a skilled {title} ({role}) at {company}.",
@@ -202,6 +214,8 @@ async def generate_job_description(title: str, role: str, skills: list, experien
         Job Title: {title}
         Role/Department: {role}
         Company: {company}
+        Location: {location}
+        Salary: {salary}
         Key Skills: {', '.join(skills) if skills else 'Relevant industry skills'}
         Experience Level: {experience}
 
@@ -343,3 +357,4 @@ async def evaluate_interview_report(topic: str, difficulty: str, questions: list
         print("Baseten Interview Report Error:", e)
 
     return default_report
+

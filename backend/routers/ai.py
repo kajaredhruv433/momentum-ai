@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from backend.services.baseten_service import generate_job_description
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -15,13 +16,15 @@ async def generate_job_desc(req: GenerateJobDescRequest):
     if not req.title:
         raise HTTPException(status_code=400, detail="Job title is required")
 
-    summary = (
-        f"We are seeking a talented {req.title} ({req.type}, {req.location}) to join our engineering team. "
-        f"In this role, you will design, build, and deploy resilient systems while collaborating with high-performing cross-functional teams."
+    result = await generate_job_description(
+        title=req.title,
+        role=req.type or "Full-time",
+        skills=[],
+        experience="",
+        company="Momentum AI",
+        location=req.location or "Remote",
+        salary=req.salary or "Competitive",
     )
-
-    return {
-        "description": summary,
-        "shortSummary": summary
-    }
+    description = result.get("overview", "")
+    return {"description": description, "shortSummary": description, **result}
 

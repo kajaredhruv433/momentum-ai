@@ -12,6 +12,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 DEFAULT_BASE_URL = os.getenv("BASETEN_BASE_URL", "https://inference.baseten.co/v1")
 DEFAULT_MODEL = os.getenv("BASETEN_MODEL", "meta-models/muse-spark-open-1026")
 DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("BASETEN_MAX_OUTPUT_TOKENS", "2048"))
+DEFAULT_REASONING_EFFORT = os.getenv("BASETEN_REASONING_EFFORT", "low").strip().lower()
 
 
 def get_baseten_client() -> OpenAI:
@@ -21,6 +22,37 @@ def get_baseten_client() -> OpenAI:
         raise RuntimeError("BASETEN_API_KEY is required for Baseten model calls.")
     base_url = os.getenv("BASETEN_BASE_URL", DEFAULT_BASE_URL).strip()
     return OpenAI(base_url=base_url, api_key=api_key)
+
+
+def _response_text(response) -> str:
+    """Extract only user-facing text from an OpenAI-compatible completion."""
+    if not response.choices:
+        return ""
+    content = response.choices[0].message.content
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+            else:
+                text = getattr(item, "text", None)
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+        return "\n".join(parts).strip()
+    return ""
+
+
+def _chat_completion(client: OpenAI, model: str, messages, token_limit: int):
+    """Call Muse Spark with a low reasoning budget suited to interview turns."""
+    return client.chat.completions.create(
+        model=model,
+        messages=messages,
+        max_tokens=token_limit,
+        temperature=0.2,
+        extra_body={"reasoning_effort": DEFAULT_REASONING_EFFORT},
+    )
 
 
 def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
@@ -36,16 +68,26 @@ def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
     client = get_baseten_client()
     model = os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=token_limit,
-        temperature=0.2,
-    )
-    content = response.choices[0].message.content
-    if not content or not content.strip():
-        raise RuntimeError("Baseten returned an empty response.")
-    return content.strip()
+    messages = [{"role": "user", "content": prompt}]
+    response = _chat_completion(client, model, messages, token_limit)
+    content = _response_text(response)
+    if not content:
+        # A reasoning model may spend the entire completion budget thinking.
+        # Retry once with a short-answer instruction and a larger answer budget.
+        retry_messages = messages + [{
+            "role": "user",
+            "content": "Return the requested answer now. Keep it concise and include only the answer text.",
+        }]
+        retry = _chat_completion(client, model, retry_messages, max(token_limit, 1024) * 2)
+        content = _response_text(retry)
+        if not content:
+            choice = retry.choices[0] if retry.choices else None
+            finish_reason = choice.finish_reason if choice else "no_choices"
+            raise RuntimeError(
+                f"Baseten returned no answer text after retry (finish_reason={finish_reason}, "
+                f"reasoning_effort={DEFAULT_REASONING_EFFORT})."
+            )
+    return content
 
 
 def ask_llm_chat(messages: Sequence[Dict[str, str]], max_output_tokens: Optional[int] = None) -> str:
@@ -66,16 +108,13 @@ def ask_llm_chat(messages: Sequence[Dict[str, str]], max_output_tokens: Optional
             "content": message.get("content", "")
         })
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=formatted_messages,
-        max_tokens=token_limit,
-        temperature=0.2,
-    )
-    content = response.choices[0].message.content
-    if not content or not content.strip():
-        raise RuntimeError("Baseten returned an empty response.")
-    return content.strip()
+    response = _chat_completion(client, model, formatted_messages, token_limit)
+    content = _response_text(response)
+    if not content:
+        choice = response.choices[0] if response.choices else None
+        finish_reason = choice.finish_reason if choice else "no_choices"
+        raise RuntimeError(f"Baseten returned no answer text (finish_reason={finish_reason}).")
+    return content
 
 
 def analyze_image(prompt: str, image_base64: str, mime_type: str = "image/png") -> str:
@@ -84,7 +123,8 @@ def analyze_image(prompt: str, image_base64: str, mime_type: str = "image/png") 
     model = os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
 
     try:
-        response = client.chat.completions.create(
+        response = _chat_completion(
+            client,
             model=model,
             messages=[
                 {
@@ -98,12 +138,11 @@ def analyze_image(prompt: str, image_base64: str, mime_type: str = "image/png") 
                     ]
                 }
             ],
-            max_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-            temperature=0.1,
+            token_limit=DEFAULT_MAX_OUTPUT_TOKENS,
         )
-        content = response.choices[0].message.content
-        if content and content.strip():
-            return content.strip()
+        content = _response_text(response)
+        if content:
+            return content
     except Exception:
         # Fall back to text prompt if the current model does not accept image_url
         pass

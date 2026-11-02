@@ -22,6 +22,7 @@ export default function InterviewRoom({
   onToggleMute,
   wasInterrupted = false,
   onClearTranscript,
+  onReplayQuestion,
   pauseCountdown = null,
   silenceSeconds = 0,
 }) {
@@ -306,6 +307,17 @@ export default function InterviewRoom({
               <p style={{ fontSize: '1.05rem', lineHeight: '1.6', color: '#fff', fontWeight: 500 }}>
                 "{currentQ}"
               </p>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ marginTop: '10px', padding: '7px 12px', fontSize: '0.82rem' }}
+                onClick={onReplayQuestion}
+                disabled={!onReplayQuestion || isConcluding}
+              >
+                <Volume2 size={15} />
+                <span>Replay question</span>
+              </button>
 
               <div style={{ marginTop: '12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span

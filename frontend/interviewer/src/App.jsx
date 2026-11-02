@@ -207,6 +207,7 @@ export default function App() {
         if (!interviewState?.timer_started && interviewState?.interview_id) {
           api.questionStarted(interviewState.interview_id).catch(() => {});
         }
+        voiceRef.current?.startListening(null, true);
       },
       true, // Allow intentional question replay
       interviewState?.panel_member_details
@@ -639,6 +640,11 @@ export default function App() {
           onToggleMute={handleToggleMute}
           wasInterrupted={wasInterrupted}
           onClearTranscript={handleClearTranscript}
+          onReplayQuestion={() => handleReplayQuestion(
+            interviewState?.current_question,
+            interviewState?.selected_panel_member,
+            interviewState?.panel_member_details?.gender,
+          )}
           pauseCountdown={pauseCountdown}
           silenceSeconds={silenceSeconds}
         />
