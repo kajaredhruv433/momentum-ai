@@ -184,3 +184,27 @@ The repository includes integration and feature checks under `scripts/`, plus ro
 | Recruiter candidates dashboard | `http://localhost:3000/recruiter/dashboard/candidates` |
 | Interview room | `http://127.0.0.1:8000/interview-app` |
 | FastAPI docs | `http://127.0.0.1:8000/docs` |
+# Repository-backed interview coding challenge
+
+The interviewer can connect a GitHub repository before starting. Its first
+question captures the candidate's claimed role, contribution, implementation,
+technology stack, and AI tool use. Meta Model API turns that response into
+bounded JSON claims; the copied LangGraph evaluator analyzes the selected
+repository in the background while the voice interview continues. When its
+isolated Daytona workspace is ready, the interview may offer a bug-fix exercise
+in the embedded editor. The editor works on a temporary repository copy and
+does not push changes to GitHub. After submission, the interview timer resumes
+and the interviewer asks the candidate to explain the fix.
+
+Configure `MODEL_API_KEY` in `backend/.env` with the competition Meta Model API
+key. `DAYTONA_API_KEY` is copied from the Momentum evaluator configuration;
+GitHub OAuth credentials are read from the existing backend environment. The
+evaluator uses its own SQLite file and the Mongo database named by
+`REPO_EVALUATOR_MONGODB_DATABASE`, keeping evaluator sessions separate from
+the portal's interview database. GitHub access tokens are encrypted at rest in
+that session database and cleared after repository preparation completes.
+
+The evaluator needs the additional packages in `backend/requirements.txt`.
+Restart the backend after configuring `MODEL_API_KEY`; if Meta or Daytona is
+not configured, the voice interview continues and reports repository analysis
+as unavailable.

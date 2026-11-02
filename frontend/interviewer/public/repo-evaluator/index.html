@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Momentum — Code Editor</title>
+  
+  <!-- Codicons (Official VS Code Icon Font) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.36/dist/codicon.min.css">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- IDE Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+  <div id="app-root">
+    
+    <!-- Top Title & Navigation Bar: Minimal Header with AI Assistant option only -->
+    <header class="titlebar">
+      <div class="titlebar-left">
+        <div class="brand-logo" title="Momentum Code Editor">
+          <span>Momentum</span>
+        </div>
+        <span id="assessment-label" class="assessment-repo-label"></span>
+      </div>
+
+      <div class="titlebar-center"></div>
+
+      <!-- Titlebar Right: AI Assistant Option Only -->
+      <div class="titlebar-right">
+        <button id="assessment-hints" class="ai-assistant-btn" title="Open AI Assistant">
+          <span class="codicon codicon-sparkle"></span>
+          <span>AI Assistant</span>
+        </button>
+        <button id="assessment-run-generated" hidden style="display:none" class="ai-assistant-btn" title="Run the generated focused test" aria-label="Run focused test"><span class="codicon codicon-play"></span></button>
+        <!-- Fallback buttons for existing JS event listeners -->
+        <button id="assessment-load" style="display:none;" aria-hidden="true"></button>
+        <button id="assessment-tests" style="display:none;" aria-hidden="true"></button>
+      </div>
+    </header>
+
+    <!-- Main Workbench Area -->
+    <main class="workbench-main">
+      
+      <!-- Resizable Sidebar -->
+      <aside class="sidebar-panel" id="sidebar-panel">
+        
+        <!-- Sidebar Header -->
+        <div class="sidebar-header">
+          <span class="sidebar-title" id="sidebar-title">EXPLORER</span>
+          <div class="sidebar-actions">
+            <button class="icon-btn" id="explorer-new-file" title="New File">
+              <span class="codicon codicon-new-file"></span>
+            </button>
+            <button class="icon-btn" id="explorer-new-folder" title="New Folder">
+              <span class="codicon codicon-new-folder"></span>
+            </button>
+            <button class="icon-btn" id="explorer-upload-folder" title="Upload Local Folder">
+              <span class="codicon codicon-cloud-upload"></span>
+            </button>
+            <button class="icon-btn" id="explorer-refresh" title="Refresh Explorer">
+              <span class="codicon codicon-refresh"></span>
+            </button>
+            <button class="icon-btn" id="explorer-collapse" title="Collapse All Folders">
+              <span class="codicon codicon-collapse-all"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 1. EXPLORER VIEW -->
+        <div class="sidebar-view active" id="sidebar-explorer">
+          <div class="explorer-root-title">
+            <span class="codicon codicon-chevron-down" style="font-size:12px; margin-right:4px;"></span>
+            <span id="project-title">my-project</span>
+          </div>
+          <div class="file-tree-container" id="file-tree-container">
+            <!-- Dynamic file tree inserted by AppController -->
+          </div>
+
+          <!-- Drag & Drop / Upload Target Box -->
+          <div class="explorer-upload-box" onclick="window.app.triggerFolderUpload()" title="Click or Drag files & folders here to add to project">
+            <span class="codicon codicon-cloud-upload"></span>
+            <strong>Drop Files or Folders Here</strong>
+            <p>Or click to import a local project</p>
+          </div>
+        </div>
+
+        <!-- 2. SEARCH VIEW -->
+        <div class="sidebar-view" id="sidebar-search">
+          <div class="sidebar-search-container">
+            <div class="sidebar-search-input-wrap">
+              <input type="text" class="sidebar-search-input" id="search-panel-input" placeholder="Search across all files..." spellcheck="false" />
+            </div>
+            <div class="search-results-list" id="search-results">
+              <div class="search-no-results">Type query above to search project code</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. SOURCE CONTROL VIEW -->
+        <div class="sidebar-view" id="sidebar-git">
+          <div class="git-sidebar-container">
+            <div class="git-commit-box">
+              <textarea id="git-commit-input" placeholder="Commit message (Enter to commit)"></textarea>
+              <button class="action-btn-primary" id="git-commit-btn" style="width:100%; justify-content:center;">
+                <span class="codicon codicon-check"></span> Commit Changes
+              </button>
+            </div>
+            <div style="font-size: 11px; color:#888; text-transform:uppercase; font-weight:600; margin-top:8px;">
+              Repository Branch: <span style="color:#58a6ff;">main</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. RUN & DEBUG VIEW -->
+        <div class="sidebar-view" id="sidebar-debug">
+          <div style="padding: 16px; color:#aaa; font-size: 12px; line-height: 1.6;">
+            <p>To run or debug your active project, press <strong>Run</strong> in the top bar or use the terminal below.</p>
+            <div style="margin-top: 12px;">
+              <button class="action-btn-primary" onclick="window.previewManager.runActiveProject()" style="width:100%; justify-content:center;">
+                <span class="codicon codicon-play"></span> Start Live Preview
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. EXTENSIONS VIEW -->
+        <div class="sidebar-view" id="sidebar-extensions">
+          <div class="ext-list">
+            <div class="ext-item">
+              <span class="codicon codicon-symbol-class ext-icon"></span>
+              <div class="ext-info">
+                <h4>Monaco Language Tools</h4>
+                <p>IntelliSense, completions, and syntax trees.</p>
+                <span class="ext-installed-badge">Built-in</span>
+              </div>
+            </div>
+            <div class="ext-item">
+              <span class="codicon codicon-browser ext-icon"></span>
+              <div class="ext-info">
+                <h4>Live Server Preview</h4>
+                <p>Instant responsive sandboxed web preview.</p>
+                <span class="ext-installed-badge">Built-in</span>
+              </div>
+            </div>
+            <div class="ext-item">
+              <span class="codicon codicon-terminal ext-icon"></span>
+              <div class="ext-info">
+                <h4>Momentum Developer Shell</h4>
+                <p>Interactive terminal with node and python runners.</p>
+                <span class="ext-installed-badge">Built-in</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Center: Editor & Resizable Bottom Panel -->
+      <section class="workbench-center">
+        
+        <!-- Editor Tabs Bar -->
+        <div class="editor-tabs-bar" id="editor-tabs">
+          <!-- Dynamic editor tabs inserted by EditorManager -->
+        </div>
+
+        <!-- Breadcrumbs Navigation Bar -->
+        <div class="breadcrumbs-bar" id="breadcrumbs">
+          <span class="breadcrumb-item">Momentum IDE</span>
+        </div>
+
+        <!-- Monaco Code Editor Area -->
+        <div class="editor-container">
+          <div id="monaco-editor-container"></div>
+        </div>
+
+        <!-- Bottom Panel (Terminal, Live Preview, Problems, Output) -->
+        <div class="bottom-panel" id="bottom-panel">
+          
+          <div class="panel-header">
+            <div class="panel-tabs">
+              <button class="panel-tab-btn active" data-panel="terminal">TERMINAL</button>
+              <button class="panel-tab-btn" data-panel="preview">LIVE PREVIEW</button>
+              <button class="panel-tab-btn" data-panel="output">OUTPUT</button>
+              <button class="panel-tab-btn" data-panel="problems">PROBLEMS</button>
+              <button class="panel-tab-btn" data-panel="status">STATUS <span id="setup-status-badge" class="setup-status-badge">—</span></button>
+            </div>
+            <div class="panel-actions">
+              <button class="icon-btn" onclick="window.terminal.clear()" title="Clear Terminal">
+                <span class="codicon codicon-clear-all"></span>
+              </button>
+              <button class="icon-btn" id="panel-close-btn" title="Close Panel (Ctrl+`)">
+                <span class="codicon codicon-close"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Panel 1: Interactive Terminal -->
+          <div class="panel-content-view active" id="panel-terminal">
+            <div id="terminal-container" style="height:100%; display:flex; flex-direction:column;"></div>
+          </div>
+
+          <!-- Panel 2: Live Preview -->
+          <div class="panel-content-view" id="panel-preview">
+            <div class="preview-container" id="preview-container"></div>
+          </div>
+
+          <!-- Panel 3: Output Log -->
+          <div class="panel-content-view" id="panel-output">
+            <div style="padding:12px; font-family:var(--mono-font); font-size:12px; color:#aaa;">
+              [Log] Workspace engine initialized. Ready for user code.
+            </div>
+          </div>
+
+          <!-- Panel 4: Problems / Markers -->
+          <div class="panel-content-view" id="panel-problems">
+            <div style="padding:16px; font-size:12px; color:#888; text-align:center;">
+              No problems have been detected in the workspace.
+            </div>
+          </div>
+
+          <div class="panel-content-view" id="panel-status">
+            <section class="setup-status-view" aria-live="polite">
+              <div class="setup-status-heading"><div><strong>Environment setup</strong><p id="setup-status-summary">Waiting for assessment setup…</p></div><span id="setup-status-state" class="setup-status-state">WAITING</span></div>
+              <ol id="setup-status-steps" class="setup-status-steps"><li class="setup-step pending"><span class="setup-step-mark">○</span><span>Waiting for setup information…</span></li></ol>
+              <details id="setup-live-log" class="setup-live-log" hidden><summary>Live dependency terminal output</summary><pre id="setup-live-log-output">Waiting for installer output…</pre></details>
+              <pre id="setup-status-error" class="setup-status-error" hidden></pre>
+              <button id="setup-reload-repository" class="setup-reload-button" type="button" hidden>Retry repository loading</button>
+              <button id="setup-retry-dependencies" class="setup-reload-button" type="button" hidden>Retry dependency setup</button>
+            </section>
+          </div>
+
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Bottom Right Submit Action Button -->
+    <div class="submit-container-bottom-right">
+      <button id="assessment-submit" class="assessment-submit-btn" title="Submit Assessment Solution">
+        <span class="codicon codicon-check"></span>
+        <span>Submit</span>
+      </button>
+    </div>
+
+    <!-- Hidden Input for Folder Upload -->
+    <input type="file" id="hidden-folder-input" webkitdirectory directory multiple style="display:none;" />
+    <!-- Hidden Input for ZIP Upload -->
+    <input type="file" id="hidden-zip-input" accept=".zip" style="display:none;" />
+
+    <!-- Floating Right-Click Context Menu -->
+    <div class="context-menu hidden" id="context-menu">
+      <div class="context-menu-item" data-action="new-file">
+        <span class="codicon codicon-new-file"></span> New File
+      </div>
+      <div class="context-menu-item" data-action="new-folder">
+        <span class="codicon codicon-new-folder"></span> New Folder
+      </div>
+      <div class="context-separator"></div>
+      <div class="context-menu-item" data-action="rename">
+        <span class="codicon codicon-edit"></span> Rename
+      </div>
+      <div class="context-menu-item" data-action="delete" style="color:#f85149;">
+        <span class="codicon codicon-trash"></span> Delete
+      </div>
+      <div class="context-separator"></div>
+      <div class="context-menu-item" data-action="download">
+        <span class="codicon codicon-cloud-download"></span> Download File
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Core App Scripts -->
+  <script src="js/sample-projects.js"></script>
+  <script src="js/vfs.js?v=20261031-assessment-first-paint"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/terminal.js"></script>
+  <script src="js/preview.js"></script>
+  <script src="js/commands.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/assessment-workspace.js?v=20261101-live-dependency-logs"></script>
+</body>
+</html>

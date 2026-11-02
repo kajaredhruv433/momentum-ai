@@ -64,6 +64,7 @@ Candidate profile: {candidate_profile}
 Candidate projects: {projects}
 Areas to cover: {areas_to_cover}
 Areas already covered: {covered_areas}
+Repository evaluator availability: {repo_assessment_option}
 Available interview panel: {panels}
 Previous interview history: {question_answer_history}
 Candidate's latest response: {last_candidate_response}
@@ -76,6 +77,7 @@ Choose CONTINUE when another question should be asked. If continuing, choose exa
 - clarification: probe the most valuable vague, incomplete, contradictory, or unsupported previous answer;
 - project: probe the most valuable supplied candidate project without inventing details;
 - area: evaluate one area that is not already adequately covered.
+- repo_assessment: choose this only when the evaluator availability above explicitly says READY; use it as the fourth interview option to start the prepared coding challenge.
 
 Generate exactly ONE natural spoken question. Avoid repetition and do not provide explanations, scoring, feedback, hints, or multiple questions. Then select exactly ONE panel member whose role, expertise, seniority, and evaluation responsibility best match the question. The name MUST be copied exactly from the supplied panel.
 
@@ -83,7 +85,7 @@ Return ONLY valid JSON. No markdown or explanation.
 For CONCLUDE:
 {{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
 For CONTINUE:
-{{"status":"continue","question_domain":"clarification|project|area","generated_question":"...","panel":"Exact Panel Member Name"}}
+{{"status":"continue","question_domain":"clarification|project|area|repo_assessment","generated_question":"...","panel":"Exact Panel Member Name"}}
 For DRAW:
 {{"status":"continue","question_domain":"draw","generated_question":"...","panel":"Exact Panel Member Name"}}
 The status must be exactly lowercase continue or conclude."""

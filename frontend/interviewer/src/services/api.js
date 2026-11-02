@@ -71,6 +71,8 @@ export const api = {
     body: JSON.stringify({ full_name: fullName }),
   }),
   disconnectGithub: () => request('/github/session', { method: 'DELETE' }),
+  getRepositoryAssessment: (interviewId) => request(`/interviews/${interviewId}/repository-assessment`),
+  finishRepositoryAssessment: (interviewId) => request(`/interviews/${interviewId}/repository-assessment/finish`, { method: 'POST' }),
 
   // Get live status
   getInterviewStatus: (interviewId) => request(`/interviews/${interviewId}`),

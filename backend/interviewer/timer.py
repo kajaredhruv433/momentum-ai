@@ -27,10 +27,14 @@ class InterviewTimer:
         base_time: int = 1800,
         extended_time: int = 2700,
         interview_start_time: Optional[float] = None,
+        paused_at: Optional[float] = None,
+        paused_seconds: int = 0,
     ) -> None:
         self.base_time = int(base_time)
         self.extended_time = int(extended_time)
         self.interview_start_time: Optional[float] = interview_start_time
+        self.paused_at: Optional[float] = paused_at
+        self.paused_seconds = max(0, int(paused_seconds))
 
     @property
     def is_started(self) -> bool:
@@ -48,7 +52,8 @@ class InterviewTimer:
     def elapsed_time(self) -> int:
         if self.interview_start_time is None:
             return 0
-        return max(0, int(time.time() - self.interview_start_time))
+        end = self.paused_at if self.paused_at is not None else time.time()
+        return max(0, int(end - self.interview_start_time - self.paused_seconds))
 
     def determine_stage(self) -> str:
         """
@@ -70,6 +75,8 @@ class InterviewTimer:
             "base_time": self.base_time,
             "extended_time": self.extended_time,
             "elapsed_time": self.elapsed_time,
+            "paused_at": self.paused_at,
+            "paused_seconds": self.paused_seconds,
             "is_started": self.is_started,
             "stage": self.determine_stage() if self.is_started else "STARTING",
         }
@@ -80,4 +87,6 @@ class InterviewTimer:
             base_time=data.get("base_time", 1800),
             extended_time=data.get("extended_time", 2700),
             interview_start_time=data.get("interview_start_time"),
+            paused_at=data.get("paused_at"),
+            paused_seconds=data.get("paused_seconds", 0),
         )

@@ -71,6 +71,19 @@ def _get_session(request: Request) -> dict[str, Any]:
     return session
 
 
+def get_github_evaluation_session(request: Request) -> dict[str, str]:
+    """Return the connected GitHub identity/token for server-side evaluation only."""
+    session = _get_session(request)
+    if not session.get("selected_repository"):
+        raise HTTPException(status_code=409, detail="Select the candidate's repository before starting its evaluation.")
+    return {
+        "github_id": session.get("github_id", ""),
+        "login": session["login"],
+        "token": session["token"],
+        "session_id": request.cookies.get(_SESSION_COOKIE, ""),
+    }
+
+
 def get_selected_repository(request: Request, requested_full_name: str | None):
     """Validate an interview's repo metadata against the OAuth session selection."""
     if not requested_full_name:
@@ -192,6 +205,7 @@ async def github_callback(
     _sessions[session_id] = {
         "token": token,
         "login": profile.get("login", "GitHub user"),
+        "github_id": str(profile.get("id", "")),
         "expires_at": time.time() + _SESSION_TTL_SECONDS,
         "selected_repository": None,
     }

@@ -20,6 +20,11 @@ from backend.routers import (
     interviews
 )
 from backend.routers import ai, github
+from backend.interviewer.github_evaluator.router import router as repo_evaluator_router
+from backend.interviewer.github_evaluator.store import connect as connect_repo_evaluator_db
+from backend.interviewer.github_evaluator.mongo_store import initialize as initialize_repo_evaluator_mongo
+from backend.interviewer.github_evaluator.mongo_store import close as close_repo_evaluator_mongo
+from backend.interviewer.github_evaluator.api import app as repo_evaluator_app, _sandbox_expiry_sweeper, _purge_repository_snapshot
 from backend.config import PORT, HOST
 
 # Import Momentum authoritative interview platform routers & controllers
@@ -54,6 +59,43 @@ app.add_middleware(
 async def on_startup():
     if v9_ws_manager:
         v9_ws_manager.loop = asyncio.get_running_loop()
+    db = connect_repo_evaluator_db()
+    db.execute(
+        "UPDATE assessments SET status='failed',progress='Analysis was interrupted by an API restart. Start a new interview assessment.' "
+        "WHERE status IN ('queued','fetching','analyzing','preparing','submitting')"
+    )
+    db.commit()
+    db.execute(
+        "UPDATE candidates SET access_token='' WHERE id IN (SELECT candidate_id FROM assessments WHERE status='failed' AND progress LIKE 'Analysis was interrupted by an API restart.%')"
+    )
+    db.commit()
+    interrupted = [dict(row) for row in db.execute(
+        "SELECT id,repo,workspace FROM assessments WHERE status='failed' AND progress LIKE 'Analysis was interrupted by an API restart.%'"
+    ).fetchall()]
+    db.close()
+    try:
+        await initialize_repo_evaluator_mongo()
+        repo_evaluator_app.state.mongo_ready = True
+        repo_evaluator_app.state.mongo_error = None
+        for assessment in interrupted:
+            if not assessment.get("workspace"):
+                await _purge_repository_snapshot(assessment["id"], assessment["repo"])
+    except Exception as exc:
+        repo_evaluator_app.state.mongo_ready = False
+        repo_evaluator_app.state.mongo_error = str(exc)[:300]
+        print(f"Repository evaluator MongoDB is not ready yet: {str(exc)[:240]}")
+    app.state.repo_evaluator_sweeper = asyncio.create_task(
+        _sandbox_expiry_sweeper(), name="repo-evaluator-sandbox-expiry-sweeper"
+    )
+
+
+@app.on_event("shutdown")
+async def stop_repo_evaluator():
+    task = getattr(app.state, "repo_evaluator_sweeper", None)
+    if task:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    await close_repo_evaluator_mongo()
 
 from backend.candidate.solve_problem.solve_problem import router as candidate_solve_problem_router
 from backend.candidate.resume_analyser.resume_analyser import router as candidate_resume_analyser_router
@@ -69,6 +111,7 @@ app.include_router(problems.router)
 app.include_router(interviews.router)
 app.include_router(ai.router)
 app.include_router(github.router)
+app.include_router(repo_evaluator_router)
 app.include_router(candidate_solve_problem_router)
 app.include_router(candidate_resume_analyser_router)
 
@@ -105,6 +148,10 @@ def serve_interview_app(path: str = ""):
 
 if INTERVIEWER_FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=INTERVIEWER_FRONTEND_DIST / "assets"), name="interviewer_assets")
+
+REPO_EVALUATOR_FRONTEND = BASE_DIR.parent / "frontend" / "interviewer" / "public" / "repo-evaluator"
+if REPO_EVALUATOR_FRONTEND.exists():
+    app.mount("/repo-evaluator", StaticFiles(directory=REPO_EVALUATOR_FRONTEND, html=True), name="repo_evaluator_frontend")
 
 @app.get("/")
 def serve_root():

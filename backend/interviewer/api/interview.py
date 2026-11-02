@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
 try:
     from ..interview_controller import InterviewController
@@ -396,18 +396,39 @@ def get_interview(interview_id: str) -> Dict[str, Any]:
 
 @router.post("/interviews/{interview_id}/answer")
 @router.post("/interview/{interview_id}/answer")  # Compatibility alias
-def submit_answer(interview_id: str, request: CandidateAnswerRequest) -> Dict[str, Any]:
+def submit_answer(interview_id: str, request: CandidateAnswerRequest, http_request: Request,
+                  background: BackgroundTasks, http_response: Response) -> Dict[str, Any]:
     """
     Submit candidate answer. Accepts answers from either microphone (voice) or typing (text).
     Evaluates stage transitions and returns the next interview action.
     """
-    return _handle_call(
+    result = _handle_call(
         controller.answer,
         interview_id=interview_id,
         answer_text=request.answer,
         input_method=request.input_method,
         question_id=request.question_id,
     )
+    if result.pop("repository_intake_complete", False):
+        state = controller._get_state(interview_id)
+        try:
+            from backend.routers.github import get_github_evaluation_session
+            from backend.interviewer.github_evaluator.integration import start_for_interview
+            github = get_github_evaluation_session(http_request)
+            evaluation = start_for_interview(
+                interview_id=interview_id, github_id=github["github_id"], login=github["login"],
+                token=github["token"], repository=state["selected_repository"],
+                claims=state.get("repository_candidate_claims") or {}, response=http_response,
+                background=background,
+            )
+            state["repository_evaluation"] = {**evaluation, "status": "queued", "progress": "Queued for project analysis"}
+        except Exception as exc:
+            logger.warning("Repository evaluation could not start for interview %s: %s", interview_id, exc)
+            detail = getattr(exc, "detail", "Repository evaluation could not start.")
+            state["repository_evaluation"] = {"status": "unavailable", "progress": str(detail)[:500]}
+        controller._save_state(state)
+        result["repository_evaluation"] = controller._public(state).get("repository_evaluation")
+    return result
 
 
 # ============================================================================

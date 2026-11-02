@@ -1,13 +1,30 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+ENV_FILE = Path(__file__).resolve().parent / ".env"
+load_dotenv(ENV_FILE)
+
+
+def _secret_from_env_file(*names: str) -> str:
+    """Prefer a non-empty process variable, then read the ignored backend/.env directly."""
+    file_values = dotenv_values(ENV_FILE)
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+        value = str(file_values.get(name) or "").strip()
+        if value:
+            return value
+    return ""
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/momentum")
 DB_NAME = os.getenv("DB_NAME", "momentum")
 
 # Baseten API Configuration
+MODEL_API_KEY = _secret_from_env_file("MODEL_API_KEY", "META_API_KEY", "META_AI_API_KEY")
+META_API_BASE_URL = os.getenv("META_API_BASE_URL", "https://api.meta.ai/v1").strip().rstrip("/")
+META_API_MODEL = os.getenv("META_API_MODEL", "muse-spark-1.3").strip()
 BASETEN_API_KEY = os.getenv("BASETEN_API_KEY", "").strip()
 if BASETEN_API_KEY.lower() in {"your-baseten-api-key", "your_baseten_api_key_here", "placeholder"}:
     BASETEN_API_KEY = ""

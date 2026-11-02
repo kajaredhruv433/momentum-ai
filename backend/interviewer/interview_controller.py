@@ -127,6 +127,8 @@ class InterviewController:
             base_time=state.get("base_time", self.base_time_seconds),
             extended_time=state.get("extended_time", self.extended_time_seconds),
             interview_start_time=state.get("interview_start_timestamp"),
+            paused_at=state.get("interview_timer_paused_at"),
+            paused_seconds=state.get("interview_timer_paused_seconds", 0),
         )
 
     def _public(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -180,6 +182,11 @@ class InterviewController:
             "candidate_profile": state.get("candidate_profile"),
             "company_details": state.get("company_details"),
             "selected_repository": state.get("selected_repository"),
+            "repository_evaluation": {
+                key: (state.get("repository_evaluation") or {}).get(key)
+                for key in ("id", "repo", "status", "progress")
+            } if state.get("repository_evaluation") else None,
+            "repository_assessment_completed": bool(state.get("repository_assessment_completed")),
             "closing": state.get("closing"),
             "history": state.get("history", []),
             "requires_canvas": bool(current_q.get("requires_canvas")) if isinstance(current_q, dict) else False,
@@ -247,6 +254,9 @@ class InterviewController:
             "job_id": jid,
             "application_id": application_id,
             "selected_repository": selected_repository,
+            "repository_intake_pending": bool(selected_repository),
+            "repository_intake_attempts": 0,
+            "repository_evaluation": None,
             "panel_id": panel_id,
             "company_details": company_details,
             "candidate_profile": profile,
@@ -312,7 +322,27 @@ class InterviewController:
             logger.warning("MongoDB panel save warning: %s", exc)
 
         # 6. Start Stage: Opening question + panel speaker
-        start_action = create_start_action(company_details, profile, panel_with_voices, areas)
+        if selected_repository:
+            selected_member = next(
+                (member for member in panel_with_voices.values()
+                 if isinstance(member, dict) and any(term in str(member.get("role", "")).lower() for term in ("technical", "engineer", "software"))),
+                next((member for member in panel_with_voices.values() if isinstance(member, dict)), {}),
+            )
+            start_action = {
+                "panel_member": selected_member.get("name", "Interviewer"),
+                "panel_member_details": selected_member,
+                "question": "",
+            }
+            start_action["question"] = (
+                f"To begin, please walk us through your role in {selected_repository.get('full_name', 'this project')}. "
+                "What did you personally implement, how did you implement it, what technologies did you use, "
+                "and which AI tools, if any, were part of your work? Please be specific about the components or files you owned."
+            )
+            start_action["question_pattern"] = "Candidate's project role, implementation, stack, AI tool use, and claimed ownership."
+            start_action["selected_area"] = "repository_intake"
+            start_action["question_kind"] = "repository_intake"
+        else:
+            start_action = create_start_action(company_details, profile, panel_with_voices, areas)
         state["greeting_question"] = start_action.get("question")
         state["current_question"] = start_action
         state["stage"] = WAITING_FOR_FIRST_QUESTION
@@ -441,6 +471,47 @@ class InterviewController:
         })
         self._broadcast(interview_id, "decision_processing", {})
 
+        repository_intake_complete = False
+        if state.get("repository_intake_pending"):
+            from .github_evaluator.intake import extract_project_claims
+            attempts = int(state.get("repository_intake_attempts", 0)) + 1
+            state["repository_intake_attempts"] = attempts
+            selected_repo = state.get("selected_repository") or {}
+            try:
+                project_claims = extract_project_claims(clean_ans, selected_repo.get("full_name", "the selected repository"))
+            except Exception as exc:
+                logger.warning("Meta repository intake unavailable for interview %s: %s", interview_id, exc)
+                project_claims = {
+                    "candidate_role": "", "implementation_summary": clean_ans[:1500],
+                    "implementation_details": clean_ans[:3500], "tech_stack": [],
+                    "ai_tools_used": "", "claimed_files_or_components": [],
+                    "clear_enough_to_analyze": False,
+                    "clarification_question": "Could you clarify your personal contribution, the specific parts you implemented, and the technologies you used?",
+                }
+            state["repository_candidate_claims"] = project_claims
+            if not project_claims.get("clear_enough_to_analyze") and attempts < 2:
+                member = (current_q.get("panel_member") or next(iter(state.get("panel", {}).values()), {}).get("name"))
+                details = next((m for m in state.get("panel", {}).values() if isinstance(m, dict) and m.get("name") == member), {})
+                action = {
+                    "action": "ASK_QUESTION", "panel_member": member,
+                    "panel_member_details": details,
+                    "question": project_claims.get("clarification_question") or "Could you give a more specific example of what you personally implemented and how it worked?",
+                    "question_pattern": "Clarify contribution, implementation, technology stack, or AI tool use.",
+                    "selected_area": "repository_intake", "stage": "NORMAL", "question_kind": "repository_intake",
+                }
+                state["current_question"] = action
+                state["interview_phase"] = "normal"
+                self._save_state(state)
+                self._broadcast(interview_id, "speaker_changed", {
+                    "panel_member": member, "question": action["question"],
+                    "question_pattern": action["question_pattern"], "selected_area": action["selected_area"],
+                    "question_kind": action["question_kind"], "gender": details.get("gender", "Female"),
+                    "panel_member_details": details,
+                })
+                return {**self._public(state), **action}
+            state["repository_intake_pending"] = False
+            repository_intake_complete = True
+
         # ====================================================================
         # AUTHORITATIVE STAGE ROUTING
         # ====================================================================
@@ -463,6 +534,7 @@ class InterviewController:
                 areas_to_cover=state["areas_to_cover"],
                 covered_areas=state["covered_areas"],
                 interview_id=interview_id,
+                repo_assessment_ready=self._repository_assessment_ready(state),
             )
 
         elif elapsed < extended_time:
@@ -499,7 +571,21 @@ class InterviewController:
         # ====================================================================
         # ACTION DISPATCH: CONCLUDE vs NEXT QUESTION
         # ====================================================================
-        if action.get("action") == "CONCLUDE":
+        if action.get("action") == "START_REPO_ASSESSMENT":
+            state["interview_timer_paused_at"] = self._now().timestamp()
+            state["repository_evaluation"] = {**(state.get("repository_evaluation") or {}), "status": "ready"}
+            state["repository_assessment_started"] = True
+            state["current_question"] = action
+            state["interview_phase"] = "normal"
+            self._save_state(state)
+            member_details = action.get("panel_member_details") or {}
+            self._broadcast(interview_id, "speaker_changed", {
+                "panel_member": action.get("panel_member"), "question": action.get("question"),
+                "question_pattern": action.get("question_pattern"), "selected_area": "repo_assessment",
+                "question_kind": "repo_assessment", "gender": member_details.get("gender", "Female"),
+                "panel_member_details": member_details,
+            })
+        elif action.get("action") == "CONCLUDE":
             state["stage"] = CONCLUDING
             state["interview_phase"] = "concluding"
             self._save_state(state)
@@ -540,7 +626,24 @@ class InterviewController:
             self._broadcast(interview_id, "stage_changed", {"stage": state["stage"]})
 
         self._save_state(state)
-        return {**self._public(state), **action}
+        result = {**self._public(state), **action}
+        if repository_intake_complete:
+            result["repository_intake_complete"] = True
+        return result
+
+    @staticmethod
+    def _repository_assessment_ready(state: Dict[str, Any]) -> bool:
+        assessment_id = (state.get("repository_evaluation") or {}).get("id")
+        if not assessment_id:
+            return False
+        try:
+            from .github_evaluator.store import connect
+            db = connect()
+            row = db.execute("SELECT status FROM assessments WHERE id=?", (assessment_id,)).fetchone()
+            db.close()
+            return bool(row and row["status"] == "ready")
+        except Exception:
+            return False
 
     # ========================================================================
     # CLOSING FINISHED GATE -> REPORT GENERATION

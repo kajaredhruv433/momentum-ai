@@ -384,7 +384,7 @@ export default function DeviceCheck({
           <div>
             <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#f8fafc' }}>Select the project you mentioned in your resume</h2>
             <p style={{ margin: '6px 0 0', fontSize: '0.86rem', lineHeight: 1.55, color: '#94a3b8' }}>
-              Connect GitHub, then choose or paste the repository URL. This step only selects the project; repository files are not downloaded or saved by this app.
+              Connect GitHub and select the project you described. If the interview reaches the coding exercise, this session's repository snapshot will be analyzed in a separate evaluator database and copied to a temporary isolated editor. The original GitHub repository is never changed; the snapshot and editor are removed after submission or expiry.
             </p>
           </div>
         </div>
@@ -439,7 +439,7 @@ export default function DeviceCheck({
                 </div>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.5 }}>
                   <input type="checkbox" checked={repositoryConsent} onChange={(event) => setRepositoryConsent(event.target.checked)} style={{ marginTop: '3px' }} />
-                  <span><LockKeyhole size={14} style={{ verticalAlign: 'middle', marginRight: '5px' }} />I authorize this project to be considered for this interview session. Repository code will not be saved in this app.</span>
+                  <span><LockKeyhole size={14} style={{ verticalAlign: 'middle', marginRight: '5px' }} />I authorize temporary repository analysis for this interview. The session snapshot is isolated from other interviews and removed after submission or expiry; the original repository will not be modified.</span>
                 </label>
               </>
             )}

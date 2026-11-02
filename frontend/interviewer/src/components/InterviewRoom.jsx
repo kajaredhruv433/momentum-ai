@@ -60,6 +60,12 @@ export default function InterviewRoom({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {state?.repository_evaluation && !state?.repository_assessment_completed && (
+        <div className="card" style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>
+          <strong>Project evaluator: </strong>{state.repository_evaluation.progress || state.repository_evaluation.status}
+          {state.repository_evaluation.status === 'failed' && <span> The interview will continue without the code editor.</span>}
+        </div>
+      )}
       {/* Top Bar: Stage, Evaluation Areas, Timer, and End Interview */}
       <div
         className="card"
@@ -128,7 +134,7 @@ export default function InterviewRoom({
         {/* CENTER: Live Interview Spotlight & Input Area */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* 100-Second Prolonged Silence Inactivity Warning Banner */}
-          {silenceSeconds >= 60 && !isConcluding && (
+          {silenceSeconds >= 60 && !isConcluding && state?.current_question_kind !== 'repo_assessment' && (
             <div
               style={{
                 display: 'flex',
@@ -340,6 +346,16 @@ export default function InterviewRoom({
             </div>
           </div>
 
+          {state?.current_question_kind === 'repo_assessment' && state?.repository_evaluation?.id && (
+            <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: '72vh' }}>
+              <iframe
+                title="Temporary project bug-fix editor"
+                src={`/repo-evaluator/index.html?assessment_id=${encodeURIComponent(state.repository_evaluation.id)}&repo=${encodeURIComponent(state.repository_evaluation.repo || '')}`}
+                style={{ display: 'block', width: '100%', height: '72vh', border: 0, background: '#0b1020' }}
+              />
+            </div>
+          )}
+
           {/* Candidate Answering Area */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {/* Voice controls (Voice-Only Mode) */}
@@ -356,7 +372,7 @@ export default function InterviewRoom({
               onClearTranscript={onClearTranscript}
               pauseCountdown={pauseCountdown}
               onSubmitAnswer={onSubmitAnswer}
-              disabled={isConcluding || loadingAnswer}
+              disabled={isConcluding || loadingAnswer || state?.current_question_kind === 'repo_assessment'}
             />
 
             {/* Draw Diagram toggle */}

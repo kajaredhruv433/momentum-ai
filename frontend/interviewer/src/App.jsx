@@ -232,6 +232,41 @@ export default function App() {
     return () => clearInterval(interval);
   }, [screen, interviewState?.interview_id]);
 
+  useEffect(() => {
+    const interviewId = interviewState?.interview_id;
+    if (screen !== 'INTERVIEW' || !interviewId || !interviewState?.repository_evaluation?.id) return;
+    const interval = setInterval(async () => {
+      try {
+        const assessment = await api.getRepositoryAssessment(interviewId);
+        setInterviewState((prev) => prev ? ({
+          ...prev,
+          repository_evaluation: {
+            id: assessment.id, repo: assessment.repo, status: assessment.status,
+            progress: assessment.progress, challenge: assessment.challenge || null,
+          },
+        }) : prev);
+      } catch (_) {}
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [screen, interviewState?.interview_id, interviewState?.repository_evaluation?.id]);
+
+  useEffect(() => {
+    const onAssessmentSubmitted = async (event) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'momentum-repo-assessment-submitted') return;
+      const active = interviewStateRef.current;
+      if (!active?.interview_id || event.data.assessmentId !== active.repository_evaluation?.id) return;
+      try {
+        const updated = await api.finishRepositoryAssessment(active.interview_id);
+        setInterviewState(updated);
+        interviewStateRef.current = updated;
+      } catch (error) {
+        console.warn('Could not resume the interview after code submission:', error);
+      }
+    };
+    window.addEventListener('message', onAssessmentSubmitted);
+    return () => window.removeEventListener('message', onAssessmentSubmitted);
+  }, []);
+
   // Start Interview Flow
   const handleStartInterview = async (selectedRepository = null) => {
     // Prime browser audio context immediately during user click gesture
@@ -289,6 +324,7 @@ export default function App() {
           ...prev,
           selected_panel_member: data.panel_member,
           current_question: data.question,
+          current_question_kind: data.question_kind || null,
           selected_area: data.selected_area || prev?.selected_area,
           panel_member_details: data.panel_member_details || {
             ...(prev?.panel_member_details || {}),
@@ -303,7 +339,7 @@ export default function App() {
             data.panel_member,
             data.gender || data.panel_member_details?.gender || 'Female',
             () => {
-              voiceRef.current?.startListening(null, true);
+            if (data.question_kind !== 'repo_assessment') voiceRef.current?.startListening(null, true);
             },
             false,
             data.panel_member_details
@@ -537,6 +573,7 @@ export default function App() {
         activeState?.stage === 'COMPLETED' ||
         activeState?.stage === 'CONCLUDING' ||
         activeState?.stage === 'WAITING_FOR_CLOSING_SPEECH' ||
+        activeState?.current_question_kind === 'repo_assessment' ||
         activeState?.report
       ) {
         lastCandidateSpeechTimeRef.current = Date.now();
