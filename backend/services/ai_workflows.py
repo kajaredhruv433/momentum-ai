@@ -14,8 +14,7 @@ class _CallState(TypedDict, total=False):
 
 
 def _invoke_call(state: _CallState) -> _CallState:
-    # Keep existing Gemini/provider SDKs and response formats while routing
-    # every generation through a LangChain Runnable managed by LangGraph.
+    # Route generation through a LangChain Runnable managed by LangGraph.
     runnable = RunnableLambda(lambda callback: callback())
     return {"result": runnable.invoke(state["call"])}
 

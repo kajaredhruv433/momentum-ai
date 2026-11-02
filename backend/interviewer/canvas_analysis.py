@@ -2,7 +2,7 @@
 canvas_analysis.py
 
 Analyzes system-design canvas diagrams submitted by candidates during the interview.
-Uses the shared LangChain Gemini vision model to inspect the candidate's drawing,
+Uses the shared Baseten model to inspect the candidate's drawing,
 extracting labeled components, directional data flows / pipeline relationships, detailed architectural assessment, and suggestions.
 """
 from __future__ import annotations
@@ -191,7 +191,7 @@ def analyze_canvas_diagram(
     role: str,
 ) -> Dict[str, Any]:
     """
-    Analyze a candidate's system-design canvas drawing using Google Gemini Vision.
+    Analyze a candidate's system-design canvas drawing using Baseten Vision.
 
     Args:
         image_data_base64: Base64-encoded PNG string (data URL or raw base64)
@@ -221,12 +221,12 @@ def analyze_canvas_diagram(
         raw = analyze_image(prompt_text, image_data_base64)
         return _parse_analysis_json(raw)
     except Exception as exc:
-        logger.warning("Gemini vision analysis failed; trying text fallback: %s", exc)
-        return _analyze_with_gemini_text(question, role)
+        logger.warning("Vision analysis failed; trying text fallback: %s", exc)
+        return _analyze_with_text_fallback(question, role)
 
 
-def _analyze_with_gemini_text(question: str, role: str) -> Dict[str, Any]:
-    """Keep the previous text-only recovery path using the shared Gemini chain."""
+def _analyze_with_text_fallback(question: str, role: str) -> Dict[str, Any]:
+    """Keep the previous text-only recovery path using the shared Baseten model."""
     from .llm import ask_llm
 
     prompt = f"""You are a senior system design expert.
@@ -247,5 +247,5 @@ Return ONLY valid JSON:
     try:
         return _parse_analysis_json(ask_llm(prompt))
     except Exception as exc:
-        logger.error("Gemini text fallback also failed: %s", exc)
+        logger.error("Text fallback also failed: %s", exc)
         return _empty_analysis("Analysis service unavailable.")

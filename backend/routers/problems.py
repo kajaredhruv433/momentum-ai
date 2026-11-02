@@ -5,7 +5,7 @@ from datetime import datetime
 from backend.database import get_db, serialize_doc, serialize_docs
 from backend.services.code_executor import execute_code
 import uuid
-from backend.services.gemini_service import get_model, safe_parse_json, GEMINI_API_KEY
+from backend.services.baseten_service import get_model, safe_parse_json, BASETEN_API_KEY, GEMINI_API_KEY
 from backend.candidate.solve_problem.solve_problem import (
     generate_5_problems,
     get_problem_solution,

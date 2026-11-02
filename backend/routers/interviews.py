@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from backend.database import get_db, serialize_doc, serialize_docs
-from backend.services.gemini_service import (
+from backend.services.baseten_service import (
     generate_interview_questions,
     evaluate_interview_report
 )

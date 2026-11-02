@@ -1,43 +1,30 @@
-"""Shared LangChain interface for Gemini-backed application prompts."""
+"""Shared interface for Baseten-backed application prompts."""
 from __future__ import annotations
 
 import os
-from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Sequence
-
-from langchain_core.messages import HumanMessage
-from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
-from langchain_core.prompts import PromptTemplate
+from openai import OpenAI
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+DEFAULT_BASE_URL = os.getenv("BASETEN_BASE_URL", "https://inference.baseten.co/v1")
+DEFAULT_MODEL = os.getenv("BASETEN_MODEL", "meta-models/muse-spark-open-1026")
+DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("BASETEN_MAX_OUTPUT_TOKENS", "2048"))
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
 
-
-@lru_cache(maxsize=8)
-def _text_chain(max_output_tokens: int):
-    """Build a reusable LCEL chain using the single configured Gemini key."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
-
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+def get_baseten_client() -> OpenAI:
+    """Return an OpenAI client configured for Baseten."""
+    api_key = os.getenv("BASETEN_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is required for Gemini model calls.")
-
-    model = ChatGoogleGenerativeAI(
-        model=DEFAULT_MODEL,
-        google_api_key=api_key,
-        max_output_tokens=max_output_tokens,
-        temperature=0.2,
-    )
-    return PromptTemplate.from_template("{prompt}") | model | StrOutputParser()
+        raise RuntimeError("BASETEN_API_KEY is required for Baseten model calls.")
+    base_url = os.getenv("BASETEN_BASE_URL", DEFAULT_BASE_URL).strip()
+    return OpenAI(base_url=base_url, api_key=api_key)
 
 
 def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
-    """Generate a text response from Gemini through a LangChain runnable."""
+    """Generate a text response from Baseten through OpenAI-compatible client."""
     if not isinstance(prompt, str):
         raise TypeError("prompt must be a string")
     if not prompt.strip():
@@ -45,59 +32,93 @@ def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
     token_limit = DEFAULT_MAX_OUTPUT_TOKENS if max_output_tokens is None else int(max_output_tokens)
     if token_limit < 1:
         raise ValueError("max_output_tokens must be >= 1")
-    response = _text_chain(token_limit).invoke({"prompt": prompt})
-    if not response or not response.strip():
-        raise RuntimeError("Gemini returned an empty response.")
-    return response.strip()
+
+    client = get_baseten_client()
+    model = os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=token_limit,
+        temperature=0.2,
+    )
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise RuntimeError("Baseten returned an empty response.")
+    return content.strip()
 
 
 def ask_llm_chat(messages: Sequence[Dict[str, str]], max_output_tokens: Optional[int] = None) -> str:
-    """Compatibility helper that converts role/content messages to one prompt."""
+    """Helper that passes role/content messages directly to Baseten chat completion."""
     if not messages:
         raise ValueError("messages cannot be empty")
-    prompt_parts = []
+    token_limit = DEFAULT_MAX_OUTPUT_TOKENS if max_output_tokens is None else int(max_output_tokens)
+
+    client = get_baseten_client()
+    model = os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
+
+    formatted_messages = []
     for message in messages:
         if not isinstance(message, dict):
             raise TypeError("Each message must be a dictionary.")
-        prompt_parts.append(f"{message.get('role', 'user')}: {message.get('content', '')}")
-    return ask_llm("\n".join(prompt_parts), max_output_tokens)
+        formatted_messages.append({
+            "role": message.get("role", "user"),
+            "content": message.get("content", "")
+        })
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=formatted_messages,
+        max_tokens=token_limit,
+        temperature=0.2,
+    )
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise RuntimeError("Baseten returned an empty response.")
+    return content.strip()
 
 
 def analyze_image(prompt: str, image_base64: str, mime_type: str = "image/png") -> str:
-    """Send a text prompt and image to Gemini Vision through LangChain."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    """Send text prompt and optional image to Baseten Vision / multimodal or fallback."""
+    client = get_baseten_client()
+    model = os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
 
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is required for Gemini model calls.")
-    model = ChatGoogleGenerativeAI(
-        model=DEFAULT_MODEL,
-        google_api_key=api_key,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        temperature=0.1,
-    )
-    message = HumanMessage(content=[
-        {"type": "text", "text": prompt},
-        {"type": "image_url", "image_url": f"data:{mime_type};base64,{image_base64}"},
-    ])
-    response = model.invoke([message])
-    content = response.content
-    if isinstance(content, str):
-        return content.strip()
-    return "".join(part.get("text", "") for part in content if isinstance(part, dict)).strip()
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_base64}"}
+                        }
+                    ]
+                }
+            ],
+            max_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+            temperature=0.1,
+        )
+        content = response.choices[0].message.content
+        if content and content.strip():
+            return content.strip()
+    except Exception:
+        # Fall back to text prompt if the current model does not accept image_url
+        pass
+
+    return ask_llm(prompt)
 
 
 def get_model() -> str:
-    return DEFAULT_MODEL
+    return os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
 
 
 def get_last_provider() -> str:
-    return "GEMINI"
+    return "BASETEN"
 
 
 def reset_routers() -> None:
-    """Clear cached model chains after environment configuration changes."""
-    _text_chain.cache_clear()
-
-
-askllm = ask_llm
+    """Clear any cached configuration."""
+    pass

@@ -10,7 +10,7 @@ Momentum is a recruitment portal and adaptive voice interview platform developed
 - Voice and typed answers, live transcript, ElevenLabs real-time speech-to-text and text-to-speech, and barge-in support.
 - Server-authoritative interview timer and NORMAL, EXTENDED, FINAL, and CONCLUSION stages.
 - Adaptive follow-up questions, panel turn selection, and an optional system-design canvas.
-- Gemini-generated panel, questions, closing message, canvas analysis, and recruiter evaluation report.
+- Baseten-generated panel, questions, closing message, canvas analysis, and recruiter evaluation report.
 - MongoDB persistence for jobs, applications, interviewer sessions, candidate context, answers, events, canvas submissions, and evaluation reports. Job search reads and ranks job records directly from MongoDB.
 - Job search tokenizes the query and ranks MongoDB job records by matches in titles, skills, and job details; no separate vector database or search service is required.
 - Recruiter dashboards with candidate scores and hiring recommendations. Candidate-facing routes expose completion status rather than recruiter reports.
@@ -21,7 +21,7 @@ Momentum is a recruitment portal and adaptive voice interview platform developed
 backend/
   main.py                    Unified FastAPI application
   routers/                   Recruitment portal endpoints
-  interviewer/               Interview lifecycle, stages, prompts, Gemini chain, voice, and storage
+  interviewer/               Interview lifecycle, stages, prompts, Baseten LLM chain, voice, and storage
   services/                  Recruitment AI, code execution, and search services
   candidate/                 Candidate resume analysis and problem generation
 frontend/                    Next.js recruitment portal
@@ -45,8 +45,8 @@ flowchart TD
     API --> Controller[Interview controller and state machine]
     Controller --> Stages[Start, normal, extended, final, conclusion, report]
     Stages --> LLM[Shared LangChain interface: llm.py]
-    LLM --> Gemini[ChatGoogleGenerativeAI]
-    Gemini --> Key[One GEMINI_API_KEY]
+    LLM --> Baseten[OpenAI Client]
+    Baseten --> Key[BASETEN_API_KEY]
     Controller --> DB[(MongoDB)]
     Browser <-->|STT WebSocket| Eleven[ElevenLabs STT]
     Browser -->|TTS request| Eleven
@@ -55,7 +55,7 @@ flowchart TD
 ## Interview lifecycle
 
 1. The controller reads the job and candidate context, prepares evaluation areas, and builds a tailored panel.
-2. Gemini creates the welcome and first question. The timer begins only after the client reports that the opening question audio has started.
+2. Baseten creates the welcome and first question. The timer begins only after the client reports that the opening question audio has started.
 3. After each answer, the current stage prompt generates the next decision and question. NORMAL can continue, conclude, or request a canvas exercise. EXTENDED raises question difficulty. FINAL allows one decisive question for exceptional performance, then ends.
 4. A panel member delivers the closing message. The controller waits for speech completion before generating the report.
 5. The structured report is stored for recruiters and linked to the application. Candidate-facing state returns completion status without the report.
@@ -67,11 +67,11 @@ The server remains authoritative for interview state and elapsed time. Voice cap
 | Module | Responsibility |
 |---|---|
 | `backend/interviewer/interview_controller.py` | Interview state machine, timing, stage transitions, persistence, and events |
-| `backend/interviewer/llm.py` | Shared LangChain Gemini text and image generation |
+| `backend/interviewer/llm.py` | Shared Baseten OpenAI-compatible text and image generation |
 | `backend/interviewer/prompts.py` | Panel, stage, closing, and report prompt templates |
 | `backend/interviewer/normal_stage.py`, `extended_stage.py`, `final_stage.py` | Stage decisions and question generation |
 | `backend/interviewer/stage_utils.py` | Output cleanup, JSON repair, and response validation |
-| `backend/interviewer/canvas_analysis.py` | Canvas input validation and structured Gemini vision result |
+| `backend/interviewer/canvas_analysis.py` | Canvas input validation and structured Baseten vision result |
 | `backend/interviewer/services/elevenlabs/` | Realtime STT relay and TTS synthesis |
 | `backend/interviewer/tools/database/` | MongoDB configuration and persistence |
 | `backend/routers/` | Recruitment portal API endpoints |
@@ -83,7 +83,7 @@ The server remains authoritative for interview state and elapsed time. Voice cap
 - Python 3.12 recommended
 - Node.js 18 or newer and npm
 - MongoDB local or Atlas instance
-- Gemini API key for AI generation
+- Baseten API key for AI generation
 - ElevenLabs API key for interview voice features
 
 ### Install
@@ -106,12 +106,13 @@ Copy-Item backend\.env.example backend\.env
 Copy-Item frontend\.env.example frontend\.env.local
 ```
 
-Set the single backend Gemini key in `backend/.env`:
+Set the single backend Baseten key in `backend/.env`:
 
 ```dotenv
-GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_MAX_OUTPUT_TOKENS=2048
+BASETEN_API_KEY=your-baseten-api-key
+BASETEN_BASE_URL=https://inference.baseten.co/v1
+BASETEN_MODEL=meta-models/muse-spark-open-1026
+BASETEN_MAX_OUTPUT_TOKENS=2048
 ```
 
 Fill in the other backend values required by the features you use. Do not commit real credentials. The frontend example includes a Gemini variable for existing client-side recruitment AI features; use the same Google AI Studio key if those features are enabled.
@@ -132,7 +133,7 @@ Fill in the other backend values required by the features you use. Do not commit
 | `NEXT_PUBLIC_API_URL` | Frontend | FastAPI base URL, normally `http://127.0.0.1:8000` |
 | `GEMINI_API_KEY` | Frontend | Existing recruitment-side Gemini features; configure only if those client features are enabled |
 
-The interview room uses the backend Gemini key. The ElevenLabs key and database credentials belong in the backend environment file.
+The interview room uses the backend Baseten key. The ElevenLabs key and database credentials belong in the backend environment file.
 
 ### Run
 

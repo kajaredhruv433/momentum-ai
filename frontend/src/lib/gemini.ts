@@ -1,104 +1,43 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
-console.log(
-  "Gemini Client Initializing. Key present:",
-  !!process.env.GEMINI_API_KEY,
-  "Length:",
-  process.env.GEMINI_API_KEY?.length,
-);
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "dummy-key");
+const basetenApiKey = process.env.BASETEN_API_KEY || process.env.GEMINI_API_KEY || "";
+const basetenBaseUrl = process.env.BASETEN_BASE_URL || "https://inference.baseten.co/v1";
+const basetenModel = process.env.BASETEN_MODEL || "meta-models/muse-spark-open-1026";
 
-// Models to try in order of preference/stability
-// Verified: gemini-2.5-flash is available
-const MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash-lite-preview-02-05", // Keeping as potential fallback if available
-];
+const client = new OpenAI({
+  baseURL: basetenBaseUrl,
+  apiKey: basetenApiKey || "dummy-key",
+});
 
-/**
- * retry wrapper for Gemini API calls
- * Implements exponential backoff and model fallback
- */
 async function makeRequestWithRetry(
   prompt: string,
-  generationConfig: any = { responseMimeType: "application/json" }
+  _generationConfig: any = { responseMimeType: "application/json" }
 ): Promise<string> {
-  const maxRetries = 2; // Reduced retries to avoid long waits
-  let lastError;
-
-  for (const modelName of MODELS) {
-    console.log(`🤖 Attempting with model: ${modelName}`);
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig
-        });
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
-      } catch (error: any) {
-        lastError = error;
-        const isRateLimit = error.message?.includes("429") || error.status === 429;
-        const isNotFound = error.message?.includes("404") || error.status === 404; // Check if model exists
-
-        if (isRateLimit) {
-          console.warn(`⚠️ Rate limit hit for ${modelName} (Attempt ${attempt + 1}/${maxRetries + 1})`);
-          if (attempt < maxRetries) {
-            // Exponential backoff: 1s, 2s, 4s...
-            const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
-            console.log(`⏳ Waiting ${Math.round(delay)}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          }
-        } else if (isNotFound) {
-          console.warn(`⚠️ Model ${modelName} not found, skipping...`);
-          break; // Skip retries for this model if not found
-        } else {
-          // If it's not a rate limit, maybe throw immediately or try next model?
-          // For now, let's treat other errors as fatal for this model but try next model
-          console.error(`❌ Error with ${modelName}:`, error.message);
-          break; // Break inner loop to try next model
-        }
-      }
-    }
-    console.warn(`⚠️ Failed with ${modelName}, trying next model...`);
+  if (!basetenApiKey || basetenApiKey === "your_baseten_api_key_here") {
+    throw new Error("BASETEN_API_KEY is not configured.");
   }
 
-  throw lastError || new Error("All models and retries failed");
+  const response = await client.chat.completions.create({
+    model: basetenModel,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.2,
+  });
+
+  const content = response.choices[0]?.message?.content || "";
+  if (!content) {
+    throw new Error("Baseten returned empty response.");
+  }
+  return content;
 }
-
-// List available models for debugging
-(async () => {
-  try {
-    console.log("🔍 Checking available models for this API key...");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`,
-    );
-    const data = await response.json();
-    if (data.models) {
-      console.log("✅ Available models:");
-      data.models.forEach((model: any) => {
-        console.log(`  - ${model.name}`);
-      });
-    } else {
-      console.log("❌ No models found or API error:", data);
-    }
-  } catch (error) {
-    console.log("❌ Could not list models:", error);
-  }
-})();
 
 export async function rateResume(resumeData: any, jobRequirements: string) {
   try {
     if (
-      !process.env.GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY === "your_gemini_api_key_here"
+      !basetenApiKey ||
+      basetenApiKey === "your_baseten_api_key_here"
     ) {
       console.warn(
-        "GEMINI_API_KEY is not set. Using domain-intelligent mock rating.",
+        "BASETEN_API_KEY is not set. Using domain-intelligent mock rating.",
       );
 
       // Local Mock Rating Logic - STRICT
@@ -317,7 +256,7 @@ export async function rateResume(resumeData: any, jobRequirements: string) {
       };
     }
   } catch (error) {
-    console.error("Gemini Rating Error:", error);
+    console.error("Baseten Rating Error:", error);
     return { score: 7.0, status: "Error", feedback: "AI rating failed." };
   }
 }
@@ -359,8 +298,7 @@ export async function generateProblem(
                 ],
                 "companies": [],
                 "constraints": ["Constraint 1", "Constraint 2"]
-              },
-              ...
+              }
             ]
         `;
     } else {
@@ -384,39 +322,28 @@ export async function generateProblem(
                 "type": "general",
                 "companies": [],
                 "constraints": [] 
-              },
-              ...
+              }
             ]
             
             Do NOT include "defaultCode", "testCases", "functionName", or "args".
         `;
     }
 
-    console.log("📝 Sending request to Gemini API...");
+    console.log("📝 Sending request to Baseten API...");
     const text = await makeRequestWithRetry(prompt);
-    console.log("✅ Received response from Gemini API");
-
-    console.log("📄 AI Response text length:", text.length);
-    if (text.length > 500) {
-      console.log("📄 First 200 chars:", text.substring(0, 200));
-    } else {
-      console.log("📄 Full response:", text);
-    }
+    console.log("✅ Received response from Baseten API");
 
     try {
       let data = cleanAndParseJSON(text);
 
-      // Ensure data is an array
       if (!Array.isArray(data)) {
         if (typeof data === "object" && data !== null) {
-          // Handle case where single object is returned instead of array
           data = [data];
         } else {
           throw new Error("Parsed data is not an array");
         }
       }
 
-      // Add random ID to avoid collisions for each problem
       data = data.map((prob: any) => ({
         ...prob,
         id: "gen_" + Math.random().toString(36).substr(2, 9),
@@ -431,28 +358,16 @@ export async function generateProblem(
     }
   } catch (e) {
     console.error("❌ AI Generation Error:", e);
-
-    // FALLBACK: Generate mock problem when AI fails
-    console.warn("⚠️ Gemini API failed. Using mock problem generation.");
     return generateMockProblem(topic, isCoding);
   }
 }
 
 function cleanAndParseJSON(text: string): any {
-  // 1. Remove markdown code blocks
-  let cleaned = text.replace(/```json/g, "").replace(/```/g, "");
+  let cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
-  // 2. Trim whitespace
-  cleaned = cleaned.trim();
-
-  // 3. Try parsing directly
   try {
     return JSON.parse(cleaned);
   } catch (e) {
-    // 4. If direct parse fails, try to find the first '[' and last ']' for arrays
-    //    or first '{' and last '}' for objects, favoring arrays if we expect multiple.
-
-    // Simple heuristic: Look for array first
     const firstArr = cleaned.indexOf("[");
     const lastArr = cleaned.lastIndexOf("]");
 
@@ -461,7 +376,6 @@ function cleanAndParseJSON(text: string): any {
       try {
         return JSON.parse(jsonSubstring);
       } catch (innerError) {
-        // try removing trailing commas
         try {
           return JSON.parse(jsonSubstring.replace(/,(\s*[\}\]])/g, "$1"));
         } catch { }
@@ -476,11 +390,10 @@ function cleanAndParseJSON(text: string): any {
       try {
         return JSON.parse(jsonSubstring);
       } catch (innerError) {
-        // 5. Last resort: try to fix common trailing items
         try {
-          return JSON.parse(jsonSubstring.replace(/,(\s*[\}\]])/g, "$1")); // Remove trailing commas
+          return JSON.parse(jsonSubstring.replace(/,(\s*[\}\]])/g, "$1"));
         } catch {
-          throw e; // Throw original error if strict extraction failed
+          throw e;
         }
       }
     }
@@ -488,7 +401,6 @@ function cleanAndParseJSON(text: string): any {
   }
 }
 
-// Mock problem generation fallback
 function generateMockProblem(topic: string, isCoding: boolean): any[] {
   const problems = [];
 
@@ -500,7 +412,7 @@ function generateMockProblem(topic: string, isCoding: boolean): any[] {
       problems.push({
         id,
         title: `${topic} Challenge ${i + 1}`,
-        description: `<p>This is a coding problem related to <strong>${topic}</strong> (${i + 1}).</p><p><em>Note: This is a mock problem generated because the AI API is unavailable. Please configure a valid Gemini API key for AI-generated problems.</em></p>`,
+        description: `<p>This is a coding problem related to <strong>${topic}</strong> (${i + 1}).</p><p><em>Note: This is a mock problem. Please configure BASETEN_API_KEY for AI generation.</em></p>`,
         difficulty: ["Easy", "Medium", "Hard"][i % 3] as any,
         slug,
         status: "Unsolved" as const,
@@ -527,7 +439,7 @@ function generateMockProblem(topic: string, isCoding: boolean): any[] {
       problems.push({
         id,
         title: `${topic} Concept ${i + 1}`,
-        description: `<p>This is a theoretical question about <strong>${topic}</strong> (${i + 1}).</p><p><em>Note: This is a mock problem.</em></p>`,
+        description: `<p>This is a theoretical question about <strong>${topic}</strong> (${i + 1}).</p>`,
         difficulty: ["Easy", "Medium", "Hard"][i % 3] as any,
         slug,
         status: "Unsolved" as const,
