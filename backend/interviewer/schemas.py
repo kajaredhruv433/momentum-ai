@@ -35,6 +35,9 @@ class CreateInterviewRequest(BaseModel):
     candidate_name: Optional[str] = Field(None, description="Candidate full name")
     job_id: Optional[str] = Field(None, description="MongoDB job ID")
     application_id: Optional[str] = Field(None, description="MongoDB application ID")
+    selected_repository: Optional[Dict[str, Any]] = Field(
+        None, description="GitHub repository metadata selected for this interview; no source files"
+    )
 
 
 class CandidateAnswerRequest(BaseModel):

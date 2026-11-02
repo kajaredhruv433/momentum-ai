@@ -1,9 +1,31 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Mic, CheckCircle2, AlertCircle, Play, Building2, Briefcase, User, Sparkles, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Camera, Mic, CheckCircle2, AlertCircle, Play, Building2, Briefcase, User, Sparkles, ShieldCheck, RefreshCw, Link2, LockKeyhole } from 'lucide-react';
+import { api } from '../services/api';
+
+function repositoryNameFromInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  let path = raw;
+  try {
+    if (/^https?:\/\//i.test(raw)) {
+      const url = new URL(raw);
+      if (url.hostname.toLowerCase() !== 'github.com') return '';
+      path = url.pathname;
+    } else {
+      path = raw.replace(/^git@github\.com:/i, '');
+    }
+  } catch (_) {
+    return '';
+  }
+  const parts = path.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '').split('/');
+  if (parts.length !== 2 || !parts.every((part) => /^[A-Za-z0-9_.-]+$/.test(part))) return '';
+  return `${parts[0]}/${parts[1]}`;
+}
 
 export default function DeviceCheck({
   jobData,
   candidateInfo,
+  resumeText,
   onStartInterview,
   loadingStart,
   loadingSetup,
@@ -18,6 +40,108 @@ export default function DeviceCheck({
   const [micPermission, setMicPermission] = useState('prompt');
   const [micVolume, setMicVolume] = useState(0);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [githubLogin, setGithubLogin] = useState('');
+  const [repositories, setRepositories] = useState([]);
+  const [selectedRepository, setSelectedRepository] = useState(null);
+  const [repositoryInput, setRepositoryInput] = useState('');
+  const [repositoryError, setRepositoryError] = useState('');
+  const [repositoryConsent, setRepositoryConsent] = useState(false);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const githubAuthUrl = window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8000/auth/github'
+    : '/auth/github';
+
+  useEffect(() => {
+    let cancelled = false;
+    const callbackStatus = new URLSearchParams(window.location.search).get('github');
+    if (callbackStatus === 'error') {
+      setRepositoryError('GitHub connection did not complete. Check the GitHub App authorization and try again.');
+    }
+    if (callbackStatus) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('github');
+      window.history.replaceState({}, '', cleanUrl);
+    }
+    const loadGithub = async () => {
+      try {
+        const session = await api.getGithubSession();
+        if (!session.connected || cancelled) return;
+        setGithubLogin(session.login || 'GitHub user');
+        setGithubLoading(true);
+        const result = await api.getGithubRepositories();
+        if (cancelled) return;
+        const repos = result.repositories || [];
+        setRepositories(repos);
+
+        const previousSelection = repos.find((repo) => repo.full_name === session.selected_repository?.full_name);
+        const resumeLinks = [...String(resumeText || '').matchAll(/(?:https?:\/\/)?github\.com\/([^/\s)]+\/[^/\s?#)]+)/gi)]
+          .map((match) => repositoryNameFromInput(`https://github.com/${match[1]}`));
+        const mentioned = repos.find((repo) => resumeLinks.some((name) => name.toLowerCase() === repo.full_name.toLowerCase()));
+        const autoSelect = previousSelection || mentioned;
+        if (autoSelect) {
+          const selected = previousSelection
+            ? { repository: previousSelection }
+            : await api.selectGithubRepository(autoSelect.full_name);
+          if (!cancelled) {
+            setSelectedRepository(selected.repository);
+            setRepositoryInput(autoSelect.html_url);
+          }
+        }
+      } catch (error) {
+        if (!cancelled && !String(error.message || '').includes('401')) {
+          setRepositoryError(error.message || 'Could not load your GitHub repositories.');
+        }
+      } finally {
+        if (!cancelled) setGithubLoading(false);
+      }
+    };
+    loadGithub();
+    return () => { cancelled = true; };
+  }, [resumeText]);
+
+  const chooseRepository = async (fullName) => {
+    setRepositoryError('');
+    setRepositoryConsent(false);
+    if (!fullName) {
+      setSelectedRepository(null);
+      return;
+    }
+    try {
+      const selected = await api.selectGithubRepository(fullName);
+      setSelectedRepository(selected.repository);
+      setRepositoryInput(selected.repository.html_url);
+    } catch (error) {
+      setRepositoryError(error.message || 'Could not select this repository.');
+    }
+  };
+
+  const selectPastedRepository = () => {
+    const fullName = repositoryNameFromInput(repositoryInput);
+    if (!fullName) {
+      setRepositoryError('Paste a GitHub repository URL such as https://github.com/owner/repo.');
+      return;
+    }
+    const authorizedRepo = repositories.find((repo) => repo.full_name.toLowerCase() === fullName.toLowerCase());
+    if (!authorizedRepo) {
+      setRepositoryError('That repository is not available to this GitHub connection. Choose one listed above.');
+      return;
+    }
+    chooseRepository(authorizedRepo.full_name);
+  };
+
+  const disconnectGithub = async () => {
+    try {
+      await api.disconnectGithub();
+      setGithubLogin('');
+      setRepositories([]);
+      setSelectedRepository(null);
+      setRepositoryInput('');
+      setRepositoryConsent(false);
+      setRepositoryError('');
+    } catch (error) {
+      setRepositoryError(error.message || 'Could not disconnect GitHub.');
+    }
+  };
 
   const startMediaCheck = async () => {
     setErrorMessage(null);
@@ -107,6 +231,10 @@ export default function DeviceCheck({
       alert("You have already completed the AI interview for this job. Each candidate may only take the interview once per job.");
       return;
     }
+    if (selectedRepository && !repositoryConsent) {
+      setRepositoryError('Please confirm the session-only repository review before starting.');
+      return;
+    }
     // Release preview stream so ElevenLabs RTC can cleanly claim hardware
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -118,7 +246,7 @@ export default function DeviceCheck({
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(() => {});
     }
-    onStartInterview();
+    onStartInterview(selectedRepository);
   };
 
   const skillsList = typeof jobData?.required_skills === 'string'
@@ -248,6 +376,81 @@ export default function DeviceCheck({
           </button>
         </div>
       </div>
+
+      {/* Optional GitHub repository selection for this interview session */}
+      <section className="card" style={{ padding: '22px 26px', border: '1px solid rgba(59, 130, 246, 0.28)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <Link2 size={22} color="#93c5fd" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#f8fafc' }}>Select the project you mentioned in your resume</h2>
+            <p style={{ margin: '6px 0 0', fontSize: '0.86rem', lineHeight: 1.55, color: '#94a3b8' }}>
+              Connect GitHub, then choose or paste the repository URL. This step only selects the project; repository files are not downloaded or saved by this app.
+            </p>
+          </div>
+        </div>
+
+        {!githubLogin ? (
+          <a href={githubAuthUrl} className="btn btn-secondary" style={{ width: 'fit-content', textDecoration: 'none', display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+            <Link2 size={16} /> Connect GitHub
+          </a>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ color: '#34d399', fontSize: '0.88rem' }}><CheckCircle2 size={15} style={{ verticalAlign: 'middle', marginRight: '6px' }} />Connected as @{githubLogin}</span>
+              <button type="button" className="btn btn-secondary" onClick={disconnectGithub} style={{ padding: '6px 10px', fontSize: '0.78rem' }}>Disconnect</button>
+            </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '7px', color: '#cbd5e1', fontSize: '0.84rem' }}>
+              Repositories available to this GitHub account
+              <select
+                value={selectedRepository?.full_name || ''}
+                onChange={(event) => chooseRepository(event.target.value)}
+                disabled={githubLoading || repositories.length === 0}
+                style={{ width: '100%', padding: '10px 12px', color: '#f8fafc', background: '#0f172a', border: '1px solid rgba(148,163,184,.35)', borderRadius: '8px' }}
+              >
+                <option value="">{githubLoading ? 'Loading repositories…' : 'Choose a repository'}</option>
+                {repositories.map((repo) => (
+                  <option key={repo.full_name} value={repo.full_name}>
+                    {repo.full_name}{repo.private ? ' · private' : ''}{String(resumeText || '').toLowerCase().includes(repo.html_url.toLowerCase()) ? ' · mentioned in resume' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <input
+                type="url"
+                value={repositoryInput}
+                onChange={(event) => setRepositoryInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); selectPastedRepository(); } }}
+                placeholder="Paste GitHub URL, e.g. https://github.com/owner/project"
+                aria-label="GitHub repository URL"
+                style={{ flex: '1 1 320px', minWidth: 0, padding: '10px 12px', color: '#f8fafc', background: '#0f172a', border: '1px solid rgba(148,163,184,.35)', borderRadius: '8px' }}
+              />
+              <button type="button" className="btn btn-secondary" onClick={selectPastedRepository} style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                <Link2 size={15} /> Select URL
+              </button>
+            </div>
+
+            {selectedRepository && (
+              <>
+                <div style={{ color: '#93c5fd', fontSize: '0.86rem' }}>
+                  Selected: <strong>{selectedRepository.full_name}</strong>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', color: '#cbd5e1', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                  <input type="checkbox" checked={repositoryConsent} onChange={(event) => setRepositoryConsent(event.target.checked)} style={{ marginTop: '3px' }} />
+                  <span><LockKeyhole size={14} style={{ verticalAlign: 'middle', marginRight: '5px' }} />I authorize this project to be considered for this interview session. Repository code will not be saved in this app.</span>
+                </label>
+              </>
+            )}
+          </>
+        )}
+
+        {repositoryError && <p role="alert" style={{ margin: 0, color: '#fca5a5', fontSize: '0.82rem' }}>{repositoryError}</p>}
+        {githubLogin && !selectedRepository && !githubLoading && repositories.length === 0 && (
+          <p style={{ margin: 0, color: '#fbbf24', fontSize: '0.82rem' }}>No repositories are available. Check that this GitHub App has read-only Contents access to the repository.</p>
+        )}
+      </section>
 
       {/* Main Two-Column Layout: Camera/Mic Test on Left, Job & Candidate Context on Right */}
       <div className="split-layout" style={{ gridTemplateColumns: '1.1fr 0.9fr' }}>

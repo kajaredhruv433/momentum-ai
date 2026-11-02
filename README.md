@@ -124,6 +124,9 @@ Fill in the other backend values required by the features you use. Do not commit
 | `BASETEN_MODEL` | Backend | Baseten model; defaults to `meta-models/muse-spark-open-1026` |
 | `BASETEN_MAX_OUTPUT_TOKENS` | Backend | Interview model response limit |
 | `BASETEN_REASONING_EFFORT` | Backend | Muse Spark reasoning budget; defaults to `low` for responsive interview turns |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | Backend | GitHub App OAuth credentials; never put these in frontend env files |
+| `GITHUB_CALLBACK_URL` | Backend | Must exactly match the GitHub App callback URL |
+| `GITHUB_FRONTEND_ORIGINS` | Backend | Allowlisted interview app origins used after GitHub authorization |
 | `ELEVENLABS_API_KEY` | Backend | ElevenLabs STT and TTS |
 | `ELEVENLABS_STT_MODEL` | Backend | STT model; defaults to `scribe_v2_realtime` |
 | `ELEVENLABS_TTS_MODEL` | Backend | TTS model; defaults to `eleven_flash_v2_5` |
@@ -132,6 +135,8 @@ Fill in the other backend values required by the features you use. Do not commit
 | `HOST`, `PORT` | Backend | FastAPI bind address and port |
 | `NEXT_PUBLIC_API_URL` | Frontend | FastAPI base URL, normally `http://127.0.0.1:8000` |
 The interview room and recruitment AI use the backend Baseten key. Do not put this key in frontend environment files. The ElevenLabs key and database credentials also belong in the backend environment file.
+
+The interview setup page can connect GitHub and select a repository mentioned in the candidate's resume. The OAuth token is held in backend memory for the current session. Repository contents are not downloaded in this selection step; the interview record keeps only the selected repository metadata.
 
 ### Run
 

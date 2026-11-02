@@ -233,7 +233,7 @@ export default function App() {
   }, [screen, interviewState?.interview_id]);
 
   // Start Interview Flow
-  const handleStartInterview = async () => {
+  const handleStartInterview = async (selectedRepository = null) => {
     // Prime browser audio context immediately during user click gesture
     voiceRef.current?.unlockAudio();
 
@@ -251,7 +251,8 @@ export default function App() {
         urlParams.candidateEmail,
         candidateInfo?.name,
         urlParams.jobId,
-        urlParams.applicationId
+        urlParams.applicationId,
+        selectedRepository
       );
       const interviewId = response.interview_id;
       voiceRef.current.interviewId = interviewId;
@@ -617,6 +618,7 @@ export default function App() {
           <DeviceCheck
             jobData={jobData}
             candidateInfo={candidateInfo}
+          resumeText={resumeText}
             onStartInterview={handleStartInterview}
             loadingStart={loadingStart}
             loadingSetup={loadingSetup}

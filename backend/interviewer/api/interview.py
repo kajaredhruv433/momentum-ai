@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 
 try:
     from ..interview_controller import InterviewController
@@ -272,7 +272,7 @@ def get_interview_setup_data(
 
 @router.post("/interviews")
 @router.post("/interview/start")  # Compatibility alias
-def create_and_start_interview(request: CreateInterviewRequest) -> Dict[str, Any]:
+def create_and_start_interview(request: CreateInterviewRequest, http_request: Request) -> Dict[str, Any]:
     """
     Create a new interview, analyze the candidate's resume, generate the AI panel,
     assign ElevenLabs voices, and formulate the opening question.
@@ -310,6 +310,10 @@ def create_and_start_interview(request: CreateInterviewRequest) -> Dict[str, Any
             logger.warning(f"Prior completion check notice: {e}")
 
     company_dict = request.company_details.model_dump()
+    from backend.routers.github import get_selected_repository
+    selected_repository = get_selected_repository(
+        request=http_request, requested_full_name=(request.selected_repository or {}).get("full_name")
+    )
     return _handle_call(
         controller.start,
         company_details=company_dict,
@@ -321,6 +325,7 @@ def create_and_start_interview(request: CreateInterviewRequest) -> Dict[str, Any
         candidate_name=request.candidate_name,
         job_id=request.job_id,
         application_id=request.application_id,
+        selected_repository=selected_repository,
     )
 
 

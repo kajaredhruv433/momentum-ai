@@ -45,7 +45,8 @@ export const api = {
     candidateEmail = null,
     candidateName = null,
     jobId = null,
-    applicationId = null
+    applicationId = null,
+    selectedRepository = null
   ) =>
     request('/interviews', {
       method: 'POST',
@@ -59,8 +60,17 @@ export const api = {
         candidate_name: candidateName,
         job_id: jobId,
         application_id: applicationId,
+        selected_repository: selectedRepository,
       }),
     }),
+
+  getGithubSession: () => request('/github/session'),
+  getGithubRepositories: () => request('/github/repositories'),
+  selectGithubRepository: (fullName) => request('/github/repository', {
+    method: 'POST',
+    body: JSON.stringify({ full_name: fullName }),
+  }),
+  disconnectGithub: () => request('/github/session', { method: 'DELETE' }),
 
   // Get live status
   getInterviewStatus: (interviewId) => request(`/interviews/${interviewId}`),

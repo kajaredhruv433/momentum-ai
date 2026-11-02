@@ -179,6 +179,7 @@ class InterviewController:
             "report": candidate_report,
             "candidate_profile": state.get("candidate_profile"),
             "company_details": state.get("company_details"),
+            "selected_repository": state.get("selected_repository"),
             "closing": state.get("closing"),
             "history": state.get("history", []),
             "requires_canvas": bool(current_q.get("requires_canvas")) if isinstance(current_q, dict) else False,
@@ -209,6 +210,7 @@ class InterviewController:
         candidate_name: Optional[str] = None,
         job_id: Optional[str] = None,
         application_id: Optional[str] = None,
+        selected_repository: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Execute full preparation and start pipeline:
@@ -244,6 +246,7 @@ class InterviewController:
             "candidate_name": candidate_name or (profile.get("name") if isinstance(profile, dict) else None),
             "job_id": jid,
             "application_id": application_id,
+            "selected_repository": selected_repository,
             "panel_id": panel_id,
             "company_details": company_details,
             "candidate_profile": profile,
