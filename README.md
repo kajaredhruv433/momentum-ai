@@ -12,7 +12,7 @@ The central interview innovation is a **GitHub-backed project code review inside
 - Voice and typed answers, live transcript, ElevenLabs real-time speech-to-text and text-to-speech, and barge-in support.
 - Server-authoritative interview timer and NORMAL, EXTENDED, FINAL, and CONCLUSION stages.
 - Adaptive follow-up questions, panel turn selection, and an optional system-design canvas.
-- Meta Model API interview generation and repository evaluation, with Baseten fallback for interview prompts; Baseten also powers selected recruitment AI features.
+- Meta Muse and Baseten model capacity support interview generation and selected AI features. Interview requests are routed to preserve continuity when a provider reaches a per-minute token limit; repository claim extraction and challenge preparation use Meta Muse.
 - MongoDB persistence for jobs, applications, interviewer sessions, candidate context, answers, events, canvas submissions, and evaluation reports. Job search reads and ranks job records directly from MongoDB.
 - Job search tokenizes the query and ranks MongoDB job records by matches in titles, skills, and job details; no separate vector database or search service is required.
 - Recruiter dashboards with candidate scores and hiring recommendations. Candidate-facing routes expose completion status rather than recruiter reports.
@@ -49,7 +49,7 @@ The root `start-dev.bat` starts the backend and portal frontend. The interview r
 
 ## LLM architecture
 
-Interview prompts use one shared entry point: [`backend/interviewer/llm.py`](backend/interviewer/llm.py). When `MODEL_API_KEY` (or a supported Meta key alias) is configured in `backend/.env`, interview generation uses the Meta Model API. If no Meta key is configured, interview prompts fall back to Baseten using `BASETEN_API_KEY`, `BASETEN_BASE_URL`, and `BASETEN_MODEL`. Recruitment AI features use Baseten through [`backend/services/baseten_service.py`](backend/services/baseten_service.py). Provider credentials stay on the backend and are never needed in the browser.
+Interview prompts use one shared entry point: [`backend/interviewer/llm.py`](backend/interviewer/llm.py). Meta Muse and Baseten are configured as complementary model capacity for the interview experience. With both credentials present, the interview uses Meta Muse for normal requests and routes a request to Baseten when Meta reports a per-minute rate or token limit, helping the session continue through quota pressure. If only one provider is configured, that provider serves the interview. Recruitment AI features also use Baseten through [`backend/services/baseten_service.py`](backend/services/baseten_service.py), while repository claim extraction and challenge preparation use Meta Muse. Provider credentials stay on the backend and are never needed in the browser.
 
 The model architecture does not own interview lifecycle logic. Existing stage prompts and validators still decide whether to continue, conclude, draw, or ask an advanced question; the controller still owns turn-taking, timers, persistence, and report visibility.
 
@@ -59,8 +59,8 @@ flowchart TD
     API --> Controller[Interview controller and state machine]
     Controller --> Stages[Start, normal, extended, final, conclusion, report]
     Stages --> LLM[Shared OpenAI-compatible client: llm.py]
-    LLM --> Meta[Meta Model API when configured]
-    LLM --> Baseten[Baseten fallback]
+    LLM --> Meta[Meta Muse interview requests]
+    LLM -->|per-minute rate or token limit| Baseten[Baseten interview capacity]
     Repo[GitHub repository selection] --> Claims[Meta claim extraction]
     Claims --> Graph[LangGraph repository evaluator]
     Graph --> Snapshot[Session-scoped repository snapshot]
@@ -87,7 +87,7 @@ The server remains authoritative for interview state and elapsed time. Voice cap
 | Module | Responsibility |
 |---|---|
 | `backend/interviewer/interview_controller.py` | Interview state machine, timing, stage transitions, persistence, and events |
-| `backend/interviewer/llm.py` | Shared Meta-first, Baseten-fallback OpenAI-compatible text and image generation |
+| `backend/interviewer/llm.py` | Shared Meta and Baseten OpenAI-compatible interview model routing |
 | `backend/interviewer/prompts.py` | Panel, stage, closing, and report prompt templates |
 | `backend/interviewer/normal_stage.py`, `extended_stage.py`, `final_stage.py` | Stage decisions and question generation |
 | `backend/interviewer/stage_utils.py` | Output cleanup, JSON repair, and response validation |
@@ -105,7 +105,7 @@ The server remains authoritative for interview state and elapsed time. Voice cap
 - Python 3.12 recommended
 - Node.js 18 or newer and npm
 - MongoDB local or Atlas instance
-- Meta Model API key for the competition AI flow, or Baseten credentials as the interview fallback
+- Meta Model API and Baseten credentials for competition AI workflows and interview capacity routing
 - Daytona API key for isolated repository coding workspaces
 - GitHub OAuth App credentials for repository connection
 - ElevenLabs API key for interview voice features

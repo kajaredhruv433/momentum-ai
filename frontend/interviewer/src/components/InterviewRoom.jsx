@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Volume2, Sparkles, PenLine, AlertTriangle } from 'lucide-react';
+import { LogOut, Volume2, Sparkles, PenLine, AlertTriangle, Code2 } from 'lucide-react';
 import PanelMembers from './PanelMembers';
 import InterviewTimer from './InterviewTimer';
 import VoiceControls from './VoiceControls';
@@ -27,6 +27,7 @@ export default function InterviewRoom({
   silenceSeconds = 0,
 }) {
   const [canvasOpen, setCanvasOpen] = useState(false);
+  const [codeResponse, setCodeResponse] = useState('');
 
   const currentQ = state?.current_question || state?.greeting_question || 'Preparing initial interview question...';
   const currentSpeaker = state?.selected_panel_member || 'Interviewer';
@@ -55,6 +56,29 @@ export default function InterviewRoom({
       setCanvasOpen(false);
     }
   }, [requiresCanvas, questionId, isConcluding]);
+
+  useEffect(() => setCodeResponse(''), [questionId]);
+
+  const handleCodeEditorKeyDown = (event) => {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    const editor = event.currentTarget;
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const nextValue = `${codeResponse.slice(0, start)}    ${codeResponse.slice(end)}`;
+    setCodeResponse(nextValue);
+    requestAnimationFrame(() => editor.setSelectionRange(start + 4, start + 4));
+  };
+
+  if (state?.current_question_kind === 'repo_assessment' && state?.repository_evaluation?.id) {
+    return (
+      <iframe
+        title="Temporary project bug-fix editor"
+        src={`/repo-evaluator/index.html?assessment_id=${encodeURIComponent(state.repository_evaluation.id)}&repo=${encodeURIComponent(state.repository_evaluation.repo || '')}`}
+        style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'block', width: '100vw', height: '100vh', border: 0, background: '#0b1020' }}
+      />
+    );
+  }
 
 
 
@@ -134,7 +158,7 @@ export default function InterviewRoom({
         {/* CENTER: Live Interview Spotlight & Input Area */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* 100-Second Prolonged Silence Inactivity Warning Banner */}
-          {silenceSeconds >= 60 && !isConcluding && state?.current_question_kind !== 'repo_assessment' && (
+          {silenceSeconds >= 60 && !isConcluding && !['repo_assessment', 'code_response'].includes(state?.current_question_kind) && (
             <div
               style={{
                 display: 'flex',
@@ -346,34 +370,52 @@ export default function InterviewRoom({
             </div>
           </div>
 
-          {state?.current_question_kind === 'repo_assessment' && state?.repository_evaluation?.id && (
-            <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: '72vh' }}>
-              <iframe
-                title="Temporary project bug-fix editor"
-                src={`/repo-evaluator/index.html?assessment_id=${encodeURIComponent(state.repository_evaluation.id)}&repo=${encodeURIComponent(state.repository_evaluation.repo || '')}`}
-                style={{ display: 'block', width: '100%', height: '72vh', border: 0, background: '#0b1020' }}
-              />
-            </div>
-          )}
-
           {/* Candidate Answering Area */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Voice controls (Voice-Only Mode) */}
-            <VoiceControls
-              micStatus={micStatus}
-              isRecording={isRecording}
-              onToggleRecord={onToggleRecord}
-              isInterviewerSpeaking={isInterviewerSpeaking}
-              micVolume={micVolume}
-              isMuted={isMuted}
-              onToggleMute={onToggleMute}
-              wasInterrupted={wasInterrupted}
-              liveTranscript={liveTranscript}
-              onClearTranscript={onClearTranscript}
-              pauseCountdown={pauseCountdown}
-              onSubmitAnswer={onSubmitAnswer}
-              disabled={isConcluding || loadingAnswer || state?.current_question_kind === 'repo_assessment'}
-            />
+            {state?.current_question_kind === 'code_response' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontWeight: 700 }}>
+                  <Code2 size={18} />
+                  <span>Write your code or SQL response</span>
+                </div>
+                <textarea
+                  aria-label="Code or SQL response"
+                  value={codeResponse}
+                  onChange={(event) => setCodeResponse(event.target.value)}
+                  onKeyDown={handleCodeEditorKeyDown}
+                  placeholder="Type your function, code, or SQL query here…"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  style={{ width: '100%', minHeight: '280px', resize: 'vertical', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', background: '#080c14', color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: '0.92rem', lineHeight: 1.6, tabSize: 4 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!codeResponse.trim() || loadingAnswer || isConcluding}
+                  onClick={() => onSubmitAnswer(codeResponse, 'text')}
+                  style={{ alignSelf: 'flex-end', padding: '10px 18px' }}
+                >
+                  Submit response
+                </button>
+              </div>
+            ) : (
+              <VoiceControls
+                micStatus={micStatus}
+                isRecording={isRecording}
+                onToggleRecord={onToggleRecord}
+                isInterviewerSpeaking={isInterviewerSpeaking}
+                micVolume={micVolume}
+                isMuted={isMuted}
+                onToggleMute={onToggleMute}
+                wasInterrupted={wasInterrupted}
+                liveTranscript={liveTranscript}
+                onClearTranscript={onClearTranscript}
+                pauseCountdown={pauseCountdown}
+                onSubmitAnswer={onSubmitAnswer}
+                disabled={isConcluding || loadingAnswer}
+              />
+            )}
 
             {/* Draw Diagram toggle */}
             {!isConcluding && (

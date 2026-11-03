@@ -9,6 +9,7 @@ class EditorManager {
     this.activeTab = null; // Current active file path
     this.viewStates = new Map(); // path -> editor view state (scroll/cursor)
     this.dirtyFiles = new Set(); // set of paths that have unsaved edits
+    this.lockedFiles = new Set();
 
     this.tabsContainer = null;
     this.breadcrumbsContainer = null;
@@ -195,6 +196,10 @@ class EditorManager {
 
   openFile(path) {
     if (!window.vfs.exists(path)) return;
+    if (this.lockedFiles.has(path)) {
+      window.terminal?.logError?.(`${path} is visible but cannot be opened.`);
+      return;
+    }
 
     // Save current active view state
     if (this.activeTab && this.editor) {

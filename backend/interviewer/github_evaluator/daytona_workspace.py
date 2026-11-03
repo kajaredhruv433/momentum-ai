@@ -93,7 +93,25 @@ def _exec_with_live_logs(sb, command: str, progress_callback=None, timeout: int 
                 session_id, command_id, forward, forward
             )
 
-        asyncio.run(asyncio.wait_for(stream(), timeout=timeout + 30))
+        async def stream_with_heartbeat():
+            log_task = asyncio.create_task(stream())
+            while not log_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(log_task), timeout=8)
+                except asyncio.TimeoutError:
+                    if progress_callback:
+                        message = (
+                            {"key": "__log__", "log": captured}
+                            if captured.strip()
+                            else {"key": "__log__", "log": "Setup command is still running; waiting for Git and runtime checks…"}
+                        )
+                        try:
+                            await asyncio.to_thread(progress_callback, message)
+                        except Exception:
+                            pass
+            await log_task
+
+        asyncio.run(asyncio.wait_for(stream_with_heartbeat(), timeout=timeout + 30))
         if progress_callback:
             try:
                 progress_callback({"key": "__log__", "log": captured})
@@ -379,6 +397,11 @@ def ensure_dependencies(uri, language, runtime_dependencies=None, progress_callb
                 marker=sb.fs.download_file('/workspace/.momentum-dependencies-ready').decode().strip() if _exec(sb,"test -f /workspace/.momentum-dependencies-ready",10,check=False).returncode==0 else ""
                 if marker==sig:
                     report("venv", f"Reused installed dependencies in Python {expected} Daytona environment", "complete")
+                    report("test_contract", "Checking the focused test against the untouched source and injected regression")
+                    verification = verify_generated_test(uri, language)
+                    if verification.get("status") == "failed":
+                        raise RuntimeError("FOCUSED_TEST_CONTRACT: " + (verification.get("error") or "The generated test did not validate against the original repository source"))
+                    report("test_contract", "Focused test passes on the original source and detects the injected regression", "complete")
                     return {"status":"passed","output":"Dependencies are already available in the Daytona sandbox."}
                 if not re.fullmatch(r"3\.\d{1,2}(?:\.\d{1,2})?", expected):
                     raise RuntimeError("The requested Python runtime was not provisioned in the Daytona sandbox")
@@ -417,15 +440,26 @@ def ensure_dependencies(uri, language, runtime_dependencies=None, progress_callb
                 marker=sb.fs.download_file('/workspace/.momentum-dependencies-ready').decode().strip() if _exec(sb,"test -f /workspace/.momentum-dependencies-ready",10,check=False).returncode==0 else ""
                 if marker==sig:
                     report("npm", "Reused installed dependencies in the Daytona sandbox", "complete")
+                    report("test_contract", "Checking the focused test against the untouched source and injected regression")
+                    verification = verify_generated_test(uri, language)
+                    if verification.get("status") == "failed":
+                        raise RuntimeError("FOCUSED_TEST_CONTRACT: " + (verification.get("error") or "The generated test did not validate against the original repository source"))
+                    report("test_contract", "Focused test passes on the original source and detects the injected regression", "complete")
                     return {"status":"passed","output":"Dependencies are already available in the Daytona sandbox."}
                 report("npm", "Installing project dependencies with npm")
                 _exec_with_live_logs(sb,"sh -lc 'cd /workspace && npm install --no-audit --no-fund'",progress_callback)
                 report("npm", "Node dependencies installed", "complete")
+            report("test_contract", "Checking the focused test against the untouched source and injected regression")
+            verification = verify_generated_test(uri, language)
+            if verification.get("status") == "failed":
+                raise RuntimeError("FOCUSED_TEST_CONTRACT: " + (verification.get("error") or "The generated test did not validate against the original repository source"))
+            report("test_contract", "Focused test passes on the original source and detects the injected regression", "complete")
             sb.fs.upload_file(sig.encode(),'/workspace/.momentum-dependencies-ready')
             return {"status":"passed","output":"Dependencies installed inside the Daytona sandbox."}
         except Exception as exc:
             report("requirements" if language=="python" else "npm", "Dependency setup failed", "failed")
-            return {"status":"failed","output":str(exc)[-3000:]}
+            detail = str(exc)[-3000:]
+            return {"status":"failed","test_contract_failed":"FOCUSED_TEST_CONTRACT:" in detail,"output":detail}
 
 def run_meta_terminal(uri, action, packages=None, runtime_dependencies=None, progress_callback=None):
     """Expose a small, allowlisted dependency terminal to Meta's repair tool loop."""
@@ -454,6 +488,52 @@ def _has_tests(uri, language):
     if language=="python": return any(PurePosixPath(p).name.startswith("test_") or PurePosixPath(p).name.endswith("_test.py") for p in paths)
     try: return bool(json.loads(read_file(uri,"package.json",8_000_000)).get("scripts",{}).get("test"))
     except Exception: return False
+
+def _run_focused_test(uri, test_path, language):
+    sb = _sandbox(uri)
+    if language == "python":
+        if test_path == "test.py":
+            command = "cd /workspace && /workspace/.venv/bin/python test.py"
+        else:
+            command = f"cd /workspace && /workspace/.venv/bin/python -m pytest -q -p no:cacheprovider {shlex.quote(test_path)}"
+    elif language == "node":
+        command = f"cd /workspace && node --test {shlex.quote(test_path)}"
+    else:
+        return {"status": "blocked", "output": "No focused test runner is available for this language."}
+    try:
+        result = _exec(sb, command, 180, check=False)
+        output = result.stdout.decode(errors="replace")[-8000:]
+        return {"status": "passed" if result.returncode == 0 else "failed", "exit_code": result.returncode, "output": output}
+    except Exception as exc:
+        return {"status": "error", "output": str(exc)[:2000]}
+
+def verify_generated_test(uri, language):
+    """Require a focused test to pass on the reference and fail on the broken target."""
+    try:
+        oracle = read_oracle(uri)
+        test_path = str(oracle.get("test_path") or "")
+        target_path = str(oracle.get("target_path") or "")
+        fixed_source = str(oracle.get("fixed_source") or "")
+        broken_source = str(oracle.get("broken_source") or "")
+        if not test_path:
+            return {"status": "skipped", "output": "No focused test was generated."}
+        if not target_path or not fixed_source or not broken_source:
+            return {"status": "failed", "error": "Reference source required to validate the generated test is missing."}
+        current_source = read_file(uri, target_path, 2_000_000)
+        try:
+            write_file(uri, target_path, fixed_source)
+            reference = _run_focused_test(uri, test_path, language)
+            if reference.get("status") != "passed":
+                return {"status": "failed", "error": "The focused test does not pass against the untouched original source. " + reference.get("output", "")[-1600:]}
+            write_file(uri, target_path, broken_source)
+            regression = _run_focused_test(uri, test_path, language)
+            if regression.get("status") == "passed":
+                return {"status": "failed", "error": "The focused test passes against the injected regression and does not distinguish the original behavior."}
+            return {"status": "passed", "reference": reference, "regression": regression}
+        finally:
+            write_file(uri, target_path, current_source)
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc)[:2400]}
 
 def run_tests(uri, language, runtime_dependencies=None):
     if not _has_tests(uri,language): return {"status":"skipped","output":"No supported repository test suite was found."}

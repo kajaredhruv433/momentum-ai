@@ -65,6 +65,8 @@ export default function App() {
   const [loadingStart, setLoadingStart] = useState(false);
   const [loadingAnswer, setLoadingAnswer] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [fullscreenError, setFullscreenError] = useState('');
 
   // Auto-fetch job and resume from MongoDB via query params
   useEffect(() => {
@@ -117,6 +119,47 @@ export default function App() {
   interviewStateRef.current = interviewState;
   const lastCandidateSpeechTimeRef = useRef(Date.now());
   const handleSubmitAnswerRef = useRef(null);
+  const assessmentMicMuteRef = useRef(null);
+  const isMutedRef = useRef(isMuted);
+  isMutedRef.current = isMuted;
+
+  const enterInterviewFullscreen = () => {
+    if (document.fullscreenElement) {
+      setIsFullscreen(true);
+      setFullscreenError('');
+      return;
+    }
+    if (!document.documentElement.requestFullscreen) {
+      setFullscreenError('Full-screen mode is not available in this browser.');
+      return;
+    }
+    document.documentElement.requestFullscreen().then(() => {
+      setIsFullscreen(true);
+      setFullscreenError('');
+    }).catch((err) => {
+      console.warn('Could not enter fullscreen mode:', err);
+      setIsFullscreen(false);
+      setFullscreenError('The browser blocked full-screen mode. Select the button below to try again.');
+    });
+  };
+
+  const exitInterviewFullscreen = () => {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch((err) => {
+        console.warn('Could not exit fullscreen mode:', err);
+      });
+    }
+  };
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
+
+  useEffect(() => {
+    if (screen === 'REPORT') exitInterviewFullscreen();
+  }, [screen]);
 
   // Initialize ElevenLabs Service instance
   useEffect(() => {
@@ -140,6 +183,7 @@ export default function App() {
     };
 
     service.onBargeInCallback = () => {
+      if (['repo_assessment', 'code_response'].includes(interviewStateRef.current?.current_question_kind)) return;
       console.info('⚡ Interviewer interrupted by candidate speech!');
       setWasInterrupted(true);
       setInterviewState((prev) => (prev ? { ...prev, isSpeaking: false } : prev));
@@ -147,6 +191,7 @@ export default function App() {
     };
 
     service.onSpeechDetectedCallback = () => {
+      if (['repo_assessment', 'code_response'].includes(interviewStateRef.current?.current_question_kind)) return;
       lastCandidateSpeechTimeRef.current = Date.now();
       setSilenceSeconds(0);
       setIsRecording(true);
@@ -154,6 +199,7 @@ export default function App() {
 
     service.onTranscriptCallback = (data) => {
       if (loadingAnswerRef.current) return;
+      if (['repo_assessment', 'code_response'].includes(interviewStateRef.current?.current_question_kind)) return;
       const spoken = (typeof data === 'string' ? data : (data?.fullTranscript || data?.text || data?.final || data?.interim || '')).trim();
       if (spoken) {
         lastCandidateSpeechTimeRef.current = Date.now();
@@ -172,6 +218,7 @@ export default function App() {
     };
 
     service.onSilenceTimeoutCallback = (transcriptFromElevenLabs) => {
+      if (['repo_assessment', 'code_response'].includes(interviewStateRef.current?.current_question_kind)) return;
       lastCandidateSpeechTimeRef.current = Date.now();
       setSilenceSeconds(0);
       const text = (transcriptFromElevenLabs || liveTranscriptRef.current || '').trim();
@@ -207,7 +254,9 @@ export default function App() {
         if (!interviewState?.timer_started && interviewState?.interview_id) {
           api.questionStarted(interviewState.interview_id).catch(() => {});
         }
-        voiceRef.current?.startListening(null, true);
+        if (!['repo_assessment', 'code_response'].includes(interviewState?.current_question_kind)) {
+          voiceRef.current?.startListening(null, true);
+        }
       },
       true, // Allow intentional question replay
       interviewState?.panel_member_details
@@ -271,6 +320,9 @@ export default function App() {
   const handleStartInterview = async (selectedRepository = null) => {
     // Prime browser audio context immediately during user click gesture
     voiceRef.current?.unlockAudio();
+    // Fullscreen also requires transient user activation, so request it before
+    // awaiting interview preparation from the backend.
+    enterInterviewFullscreen();
 
     setLoadingStart(true);
     setErrorMsg(null);
@@ -303,7 +355,9 @@ export default function App() {
           () => {
             // Once spoken, notify backend and start listening for candidate answer
             api.questionStarted(interviewId).catch(() => {});
-            voiceRef.current?.startListening(null, true);
+            if (!['repo_assessment', 'code_response'].includes(response.current_question_kind)) {
+              voiceRef.current?.startListening(null, true);
+            }
           },
           false,
           response.panel_member_details
@@ -319,6 +373,18 @@ export default function App() {
         setLiveTranscript('');
         liveTranscriptRef.current = '';
         voiceRef.current?.stopListening();
+
+        const needsMutedMic = ['repo_assessment', 'code_response'].includes(data.question_kind);
+        if (needsMutedMic) {
+          if (assessmentMicMuteRef.current === null) assessmentMicMuteRef.current = isMutedRef.current;
+          voiceRef.current?.setMuted(true);
+          setIsMuted(true);
+        } else if (assessmentMicMuteRef.current !== null) {
+          const wasMuted = assessmentMicMuteRef.current;
+          assessmentMicMuteRef.current = null;
+          voiceRef.current?.setMuted(wasMuted);
+          setIsMuted(wasMuted);
+        }
 
         setInterviewState((prev) => ({
           ...prev,
@@ -339,7 +405,9 @@ export default function App() {
             data.panel_member,
             data.gender || data.panel_member_details?.gender || 'Female',
             () => {
-            if (data.question_kind !== 'repo_assessment') voiceRef.current?.startListening(null, true);
+            if (!['repo_assessment', 'code_response'].includes(data.question_kind)) {
+              voiceRef.current?.startListening(null, true);
+            }
             },
             false,
             data.panel_member_details
@@ -461,6 +529,7 @@ export default function App() {
   // Submit Answer
   const handleSubmitAnswer = async (answerText, inputMethod = 'voice') => {
     const cleanText = (answerText || '').trim();
+    if (inputMethod === 'voice' && ['repo_assessment', 'code_response'].includes((interviewStateRef.current || interviewState)?.current_question_kind)) return;
     if (!cleanText || loadingAnswerRef.current) return;
 
     lastCandidateSpeechTimeRef.current = Date.now();
@@ -541,6 +610,7 @@ export default function App() {
   };
 
   const handleReset = () => {
+    exitInterviewFullscreen();
     voiceRef.current?.leaveChannel();
     wsRef.current?.disconnect();
     setInterviewState(null);
@@ -574,6 +644,7 @@ export default function App() {
         activeState?.stage === 'CONCLUDING' ||
         activeState?.stage === 'WAITING_FOR_CLOSING_SPEECH' ||
         activeState?.current_question_kind === 'repo_assessment' ||
+        activeState?.current_question_kind === 'code_response' ||
         activeState?.report
       ) {
         lastCandidateSpeechTimeRef.current = Date.now();
@@ -664,6 +735,24 @@ export default function App() {
       )}
 
       {screen === 'INTERVIEW' && (
+        <>
+        {!isFullscreen && (
+          <div style={{
+            position: 'fixed', top: 16, right: 16, zIndex: 1000,
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 14px', borderRadius: 10,
+            background: '#172033', border: '1px solid #475569', color: '#fff',
+          }}>
+            <span>{fullscreenError || 'Interview is ready. Enter full screen for the session.'}</span>
+            <button
+              type="button"
+              onClick={enterInterviewFullscreen}
+              style={{ padding: '8px 12px', borderRadius: 7, background: '#2563eb', color: '#fff', fontWeight: 600 }}
+            >
+              Enter Full Screen
+            </button>
+          </div>
+        )}
         <InterviewRoom
           state={interviewState}
           micStatus={micStatus}
@@ -687,6 +776,7 @@ export default function App() {
           pauseCountdown={pauseCountdown}
           silenceSeconds={silenceSeconds}
         />
+        </>
       )}
 
       {screen === 'REPORT' && (

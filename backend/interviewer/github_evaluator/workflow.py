@@ -261,6 +261,7 @@ async def prepare(s:State):
                 'target_path': challenge['target_path'],
                 'function_name': challenge['recovery']['function_name'],
                 'language': challenge['language'],
+                'test_path': challenge.get('test_path'),
                 'fixed_source': challenge['original_source'],
                 'broken_source': challenge['mutated_source'],
             }
@@ -319,18 +320,25 @@ async def prepare(s:State):
             'dependency_status': 'installing' if challenge.get('locally_testable') else 'not_required',
             'runtime_version': challenge.get('runtime_version', ''),
             'runtime_dependencies': challenge.get('runtime_dependencies', []),
-            'started_at': now,
-            'expires_at': now + 60 * settings.assessment_minutes,
+            # The interview's five-minute clock starts when the candidate
+            # opens the editor, not while repository preparation runs.
+            'started_at': None,
+            'expires_at': None,
+            'time_limit_seconds': settings.interview_code_editor_seconds,
         }
         public = {
             'title': 'Trace and repair a behavior regression',
             'instructions': 'Read problem.md to understand the broken workflow and intended function responsibility, then repair the implementation in the fetched repository copy.' + (f" A focused local test is available with the play button. {challenge.get('testability_reason', '')}" if challenge.get('locally_testable') else f" No automatic local test was created: {challenge.get('testability_reason', 'this workflow cannot be tested safely in the isolated environment.') }"),
             'files': secret['candidate_files'],
+            'locked_files': [challenge['test_path']] if challenge.get('test_path') else [],
             'problem_file': challenge['problem_path'],
             'language': challenge['language'],
             'locally_testable': challenge.get('locally_testable', False),
             'dependency_status': 'installing' if challenge.get('locally_testable') else 'not_required',
             'testability_reason': challenge.get('testability_reason', ''),
+            'time_limit_seconds': settings.interview_code_editor_seconds,
+            'started_at': None,
+            'expires_at': None,
             'setup_steps': ([
                 {'key': 'repository', 'label': 'Repository cloned into the isolated workspace', 'status': 'complete'},
                 {'key': 'image', 'label': 'Waiting to generate synthetic image fixture' if challenge.get('image_fixture_path') else 'Image fixture not needed', 'status': 'pending' if challenge.get('image_fixture_path') else 'skipped'},
@@ -376,6 +384,12 @@ async def prepare(s:State):
                     if result.get('status') == 'passed':
                         return ''
                     failure = result.get('output') or result.get('error') or 'Dependency installation failed.'
+                    if result.get('test_contract_failed'):
+                        _update_dependency_setup(
+                            challenge_id, 'failed', failure,
+                            {'key': 'test_contract', 'label': 'Focused test is not valid against the original source', 'status': 'failed'},
+                        )
+                        return failure
                     if challenge['language'] == 'python':
                         _update_dependency_setup(challenge_id, 'installing', step={'key': 'requirements', 'label': 'Muse is inspecting the Daytona dependency terminal', 'status': 'running'})
                         repair = await _meta_dependency_repair(s['workspace'], challenge, failure, progress_callback)

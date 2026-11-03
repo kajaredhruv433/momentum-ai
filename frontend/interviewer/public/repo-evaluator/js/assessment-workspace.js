@@ -129,9 +129,42 @@
     return body;
   }
 
+  let challengeExpiresAt = 0;
+  let challengeCountdownInterval = null;
+  let autoSubmitStarted = false;
+  function startChallengeCountdown(expiresAt) {
+    challengeExpiresAt = Number(expiresAt || 0);
+    const timer = document.getElementById('assessment-deadline');
+    const text = timer?.querySelector('strong');
+    if (!timer || !text || !challengeExpiresAt) return;
+    timer.hidden = false;
+    const submitButton = document.getElementById('assessment-submit');
+    if (submitButton && !autoSubmitStarted) submitButton.disabled = false;
+    const tick = () => {
+      const remaining = Math.max(0, challengeExpiresAt - Math.floor(Date.now() / 1000));
+      const minutes = Math.floor(remaining / 60).toString().padStart(2, '0');
+      const seconds = (remaining % 60).toString().padStart(2, '0');
+      text.textContent = `${minutes}:${seconds}`;
+      timer.classList.toggle('urgent', remaining <= 60);
+      if (remaining === 0 && !autoSubmitStarted) {
+        const submit = document.getElementById('assessment-submit');
+        if (submit && !submit.disabled && !submit.hidden) {
+          autoSubmitStarted = true;
+          text.textContent = 'SUBMIT';
+          window.editorManager?.editor?.updateOptions?.({ readOnly: true });
+          submit.click();
+        }
+      }
+    };
+    clearInterval(challengeCountdownInterval);
+    tick();
+    challengeCountdownInterval = setInterval(tick, 1000);
+  }
+
   async function refresh() {
     if (!assessmentId) return null;
     const assessment = await call(`/api/assessments/${assessmentId}`);
+    if (assessment.challenge?.expires_at) startChallengeCountdown(assessment.challenge.expires_at);
     const label = document.getElementById('assessment-label');
     if (label) {
       label.textContent = `${assessment.repo} · ${assessment.status}${assessment.commit_sha ? ' @ ' + assessment.commit_sha.slice(0, 8) : ''}`;
@@ -139,6 +172,7 @@
     const submitBtn = document.getElementById('assessment-submit');
     if (submitBtn) {
       submitBtn.hidden = !['ready', 'needs_review'].includes(assessment.status);
+      submitBtn.disabled = !challengeExpiresAt && !submitBtn.hidden;
     }
     const canEditAssessment = ['ready', 'needs_review'].includes(assessment.status);
     for (const id of ['assessment-load', 'assessment-tests', 'assessment-hints']) {
@@ -271,12 +305,15 @@
     }
     if (!['ready', 'needs_review'].includes(assessment.status)) throw new Error(`Repository snapshot isn't ready (${assessment.progress})`);
     const { files, folders = [], assets = [] } = await call(`/api/assessments/${assessmentId}/files`);
+    const lockedFiles = new Set(assessment.challenge?.locked_files || []);
+    window.editorManager.lockedFiles = lockedFiles;
     if (!files.length && !folders.length && !assets.length) throw new Error('The repository snapshot contains no loadable files.');
     const results = [];
     const batchSize = 8;
     for (let offset = 0; offset < files.length; offset += batchSize) {
       const batch = files.slice(offset, offset + batchSize);
       const loaded = await Promise.all(batch.map(async path => {
+        if (lockedFiles.has(path)) return { path, content: '[This test file is hidden during the candidate session.]', locked: true };
         try {
           const file = await call(`/api/assessments/${assessmentId}/file?path=${encodeURIComponent(path)}`);
           return { path, content: file.content };
@@ -326,7 +363,7 @@
     if (!assessmentId) return;
     if (window.editorManager.activeTab) window.editorManager.saveActiveFile();
     for (const path of window.vfs.getAllPaths()) {
-      if (preservedAssetPaths.has(path) || unavailablePaths.has(path) || path.endsWith('/.keep')) continue;
+      if (preservedAssetPaths.has(path) || unavailablePaths.has(path) || window.editorManager.lockedFiles.has(path) || path.endsWith('/.keep')) continue;
       await call(`/api/assessments/${assessmentId}/file?path=${encodeURIComponent(path)}`, {
         method: 'PUT', body: JSON.stringify({ content: window.vfs.readFile(path) })
       });
@@ -377,12 +414,16 @@
         await call(`/api/assessments/${assessmentId}/diagnostics`, { method: 'POST', body: JSON.stringify({ stdout: result.stdout || '', stderr: result.stderr || '', summary: result.error || result.status || '', exit_code: result.exit_code ?? null, timed_out: result.status === 'timeout', duration_seconds: result.duration_seconds ?? null }) }).catch(() => {});
         if (window.terminal && typeof window.terminal.logSystem === 'function') {
           window.terminal.logSystem(`FOCUSED TEST: ${result.status === 'passed' ? 'PASS' : result.status === 'failed' ? 'FAIL' : result.status.toUpperCase()}`);
-          window.terminal.logSystem(JSON.stringify(result, null, 2));
+          if (result.stdout) window.terminal.logSystem(result.stdout);
+          if (result.stderr || result.error) window.terminal.logError(result.stderr || result.error);
+          if (!result.stdout && !result.stderr && !result.error) window.terminal.logSystem(JSON.stringify(result, null, 2));
         }
-        alert(result.status === 'blocked' ? result.error : `Tests ${result.status}`);
+        if (result.status === 'passed') {
+          window.app?.setBottomTab?.('terminal');
+          window.app?.toggleBottomPanel?.(true);
+        }
       } catch (error) {
         if (window.terminal && typeof window.terminal.logSystem === 'function') window.terminal.logSystem(`FOCUSED TEST ERROR: ${error.message}`);
-        alert(error.message);
       } finally {
         testsBtn.disabled = false;
         testsBtn.title = previousTitle;
@@ -394,18 +435,18 @@
   const submitButton = document.getElementById('assessment-submit');
   if (submitButton) {
     submitButton.onclick = async () => {
+      if (submitButton.disabled) return;
       if (!assessmentId) {
         alert('No active assessment session found. Please launch from the assessment dashboard.');
         return;
       }
       submitButton.disabled = true;
       const prevHtml = submitButton.innerHTML;
-      submitButton.textContent = 'Evaluating…';
+      submitButton.textContent = autoSubmitStarted ? 'Time up · evaluating…' : 'Evaluating…';
       try {
         await saveWorkspace();
         const result = await call(`/api/assessments/${assessmentId}/submit`, { method: 'POST' });
-        const verdict = result.correctness === 'correct' ? 'Correct' : result.correctness === 'incorrect' ? 'Incorrect' : 'Could not verify';
-        const approach = result.approach?.detail || result.approach?.comparison || 'Approach comparison unavailable.';
+        clearInterval(challengeCountdownInterval);
         if (window.terminal && typeof window.terminal.logSystem === 'function') {
           window.terminal.logSystem(JSON.stringify(result, null, 2));
         }
@@ -419,7 +460,6 @@
         window.vfs.projectName = 'assessment-submitted';
         window.vfs.notify('project-loaded', { projectName: window.vfs.projectName });
         assessmentSnapshotLoaded = false;
-        alert(`${verdict}: ${result.reason || 'Evaluation complete.'}\n\nApproach: ${approach}`);
         window.parent.postMessage({ type: 'momentum-repo-assessment-submitted', assessmentId }, window.location.origin);
       } catch (error) { alert(error.message); }
       finally {
@@ -435,6 +475,10 @@
         for (let attempt = 0; attempt < 300 && !window.editorManager?.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 100));
         if (!window.editorManager?.editor) throw new Error('The code editor did not finish initializing. Reload this page and use Retry repository loading.');
         await loadRepository();
+        if (assessment.status === 'ready') {
+          const start = await call(`/api/assessments/${assessmentId}/start`, { method: 'POST' });
+          startChallengeCountdown(start.expires_at);
+        }
       }
     }).catch(error => {
       updateRepositoryLoad('failed', 'Editor or repository failed to initialize', error.message || 'request failed');

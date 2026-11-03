@@ -1,4 +1,6 @@
 """FastAPI routes exposing the copied evaluator's assessment APIs in Momentum."""
+import json
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from fastapi.routing import APIRoute
 
@@ -60,6 +62,17 @@ def finish_repository_assessment(interview_id: str, request: Request):
         raise HTTPException(409, "Wait for the code submission evaluation to finish.")
     state["repository_evaluation"] = {**evaluation, "status": "submitted"}
     state["repository_assessment_completed"] = True
+    db = connect()
+    try:
+        row = db.execute(
+            "SELECT result FROM submissions WHERE assessment_id=? ORDER BY created_at DESC LIMIT 1",
+            (evaluation["id"],),
+        ).fetchone()
+        state["repository_assessment_result"] = json.loads(row["result"]) if row and row["result"] else None
+    except (TypeError, json.JSONDecodeError):
+        state["repository_assessment_result"] = None
+    finally:
+        db.close()
     paused_at = state.pop("interview_timer_paused_at", None)
     if paused_at is not None:
         state["interview_timer_paused_seconds"] = int(state.get("interview_timer_paused_seconds", 0)) + max(0, int(__import__("time").time() - paused_at))

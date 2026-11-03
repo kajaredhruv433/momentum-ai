@@ -178,6 +178,24 @@ input, button, select, textarea {
   gap: 12px;
 }
 
+.assessment-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 11px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 7px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  font: 700 11px Inter, sans-serif;
+  letter-spacing: .04em;
+}
+
+.assessment-deadline[hidden] { display: none; }
+.assessment-deadline strong { color: #fff; font: 700 16px 'Fira Code', monospace; letter-spacing: 0; }
+.assessment-deadline.urgent { animation: assessment-deadline-pulse 1s infinite alternate; }
+@keyframes assessment-deadline-pulse { to { border-color: #f87171; background: rgba(127, 29, 29, 0.7); } }
+
 .ai-assistant-btn {
   display: inline-flex;
   align-items: center;

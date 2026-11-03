@@ -15,12 +15,12 @@ from typing import Any, Dict, List
 
 try:
     from .llm import ask_llm
-    from .prompts import START_PANEL_SELECTION_PROMPT, START_STAGE_PROMPT
-    from .stage_utils import as_json, clean_text, validated_panel_member
+    from .prompts import START_STAGE_PROMPT
+    from .stage_utils import as_json, clean_text
 except ImportError:
     from llm import ask_llm
-    from prompts import START_PANEL_SELECTION_PROMPT, START_STAGE_PROMPT
-    from stage_utils import as_json, clean_text, validated_panel_member
+    from prompts import START_STAGE_PROMPT
+    from stage_utils import as_json, clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -30,26 +30,52 @@ def create_start_action(
     candidate_profile: Dict[str, Any],
     panel: Dict[str, Any],
     areas_to_cover: List[str],
+    selected_repository: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     Generate welcome greeting + first interview question and choose the first panel speaker.
     """
     # 1. Gemini generates greeting + first question
+    selected_repository = selected_repository or {}
+    repository_name = str(selected_repository.get("name") or selected_repository.get("full_name") or "").rsplit("/", 1)[-1]
+    role = str(company_details.get("role") or "the role")
+    tech_stack = company_details.get("required_skills") or company_details.get("skills") or "the technologies most relevant to the role"
+    opening_focus = (
+        f"Ask the candidate to describe their personal role in {repository_name}, what they implemented, and the technologies they used."
+        if repository_name else
+        "Ask one role- and candidate-relevant interview question based on the job details and resume."
+    )
     prompt = START_STAGE_PROMPT.format(
         company_details=as_json(company_details),
         candidate_resume=as_json(candidate_profile),
+        repository_name=repository_name,
+        role=role,
+        tech_stack=as_json(tech_stack),
+        opening_focus=opening_focus,
     )
-    first_question = clean_text(ask_llm(prompt))
+    try:
+        first_question = clean_text(ask_llm(prompt, max_output_tokens=400, timeout_seconds=20))
+    except Exception as exc:
+        logger.warning("Opening question generation failed; using the repository-aware fallback: %s", exc)
+        if repository_name:
+            first_question = (
+                f"Hello, welcome. We are looking forward to discussing the {role} role. "
+                f"I see you selected {repository_name}. Could you describe your role in it, what you implemented, and the technologies you used?"
+            )
+        else:
+            first_question = f"Hello, welcome. To begin, could you tell me about your experience relevant to the {role} role?"
 
     # 2. Select initial evaluation area
     selected_area = areas_to_cover[0] if areas_to_cover else "Introduction"
 
-    # 3. Gemini selects which panel member asks the first question
-    panel_prompt = START_PANEL_SELECTION_PROMPT.format(
-        panels=as_json(panel),
-        first_question=first_question,
+    # Choose a suitable opening speaker locally so startup needs only the
+    # single bounded greeting-generation call.
+    selected_member = next(
+        (member.get("name") for member in panel.values()
+         if isinstance(member, dict) and member.get("name")
+         and any(term in str(member.get("role", "")).lower() for term in ("technical", "engineer", "software"))),
+        next((member.get("name") for member in panel.values() if isinstance(member, dict) and member.get("name")), "Interviewer"),
     )
-    selected_member = validated_panel_member(panel_prompt, panel)
 
     # 4. Extract panel member details from panel dict (which has voice.py metadata)
     member_details = None

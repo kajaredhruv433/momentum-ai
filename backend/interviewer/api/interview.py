@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
+import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
 try:
@@ -364,7 +365,22 @@ async def get_interview_tts(
         except Exception:
             pass
 
-    audio_bytes = await tts.synthesize(text, member_details=member_details)
+    try:
+        audio_bytes = await tts.synthesize(text, member_details=member_details)
+    except httpx.HTTPStatusError as exc:
+        # Keep provider response details in backend logs, but return a useful
+        # actionable error to the voice client instead of an opaque 500.
+        logger.error("ElevenLabs TTS rejected the request (%s): %s", exc.response.status_code, exc.response.text[:500])
+        if exc.response.status_code in (401, 403):
+            detail = "ElevenLabs rejected the API key or this account cannot use text-to-speech. Check the backend ElevenLabs credentials and account status."
+        elif exc.response.status_code == 402:
+            detail = "ElevenLabs account has insufficient funds. Add credits to restore spoken questions."
+        else:
+            detail = f"ElevenLabs text-to-speech is unavailable (HTTP {exc.response.status_code})."
+        raise HTTPException(status_code=503, detail=detail) from exc
+    except RuntimeError as exc:
+        logger.error("ElevenLabs TTS configuration error: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not audio_bytes:
         logger.warning("TTS audio synthesis returned empty audio for speaker %s; responding with 204", speaker)
         return Response(content=b"", media_type="audio/mpeg", status_code=204)

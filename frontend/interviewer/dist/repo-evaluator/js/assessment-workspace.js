@@ -129,9 +129,42 @@
     return body;
   }
 
+  let challengeExpiresAt = 0;
+  let challengeCountdownInterval = null;
+  let autoSubmitStarted = false;
+  function startChallengeCountdown(expiresAt) {
+    challengeExpiresAt = Number(expiresAt || 0);
+    const timer = document.getElementById('assessment-deadline');
+    const text = timer?.querySelector('strong');
+    if (!timer || !text || !challengeExpiresAt) return;
+    timer.hidden = false;
+    const submitButton = document.getElementById('assessment-submit');
+    if (submitButton && !autoSubmitStarted) submitButton.disabled = false;
+    const tick = () => {
+      const remaining = Math.max(0, challengeExpiresAt - Math.floor(Date.now() / 1000));
+      const minutes = Math.floor(remaining / 60).toString().padStart(2, '0');
+      const seconds = (remaining % 60).toString().padStart(2, '0');
+      text.textContent = `${minutes}:${seconds}`;
+      timer.classList.toggle('urgent', remaining <= 60);
+      if (remaining === 0 && !autoSubmitStarted) {
+        const submit = document.getElementById('assessment-submit');
+        if (submit && !submit.disabled && !submit.hidden) {
+          autoSubmitStarted = true;
+          text.textContent = 'SUBMIT';
+          window.editorManager?.editor?.updateOptions?.({ readOnly: true });
+          submit.click();
+        }
+      }
+    };
+    clearInterval(challengeCountdownInterval);
+    tick();
+    challengeCountdownInterval = setInterval(tick, 1000);
+  }
+
   async function refresh() {
     if (!assessmentId) return null;
     const assessment = await call(`/api/assessments/${assessmentId}`);
+    if (assessment.challenge?.expires_at) startChallengeCountdown(assessment.challenge.expires_at);
     const label = document.getElementById('assessment-label');
     if (label) {
       label.textContent = `${assessment.repo} · ${assessment.status}${assessment.commit_sha ? ' @ ' + assessment.commit_sha.slice(0, 8) : ''}`;
@@ -139,6 +172,7 @@
     const submitBtn = document.getElementById('assessment-submit');
     if (submitBtn) {
       submitBtn.hidden = !['ready', 'needs_review'].includes(assessment.status);
+      submitBtn.disabled = !challengeExpiresAt && !submitBtn.hidden;
     }
     const canEditAssessment = ['ready', 'needs_review'].includes(assessment.status);
     for (const id of ['assessment-load', 'assessment-tests', 'assessment-hints']) {
@@ -394,16 +428,18 @@
   const submitButton = document.getElementById('assessment-submit');
   if (submitButton) {
     submitButton.onclick = async () => {
+      if (submitButton.disabled) return;
       if (!assessmentId) {
         alert('No active assessment session found. Please launch from the assessment dashboard.');
         return;
       }
       submitButton.disabled = true;
       const prevHtml = submitButton.innerHTML;
-      submitButton.textContent = 'Evaluating…';
+      submitButton.textContent = autoSubmitStarted ? 'Time up · evaluating…' : 'Evaluating…';
       try {
         await saveWorkspace();
         const result = await call(`/api/assessments/${assessmentId}/submit`, { method: 'POST' });
+        clearInterval(challengeCountdownInterval);
         const verdict = result.correctness === 'correct' ? 'Correct' : result.correctness === 'incorrect' ? 'Incorrect' : 'Could not verify';
         const approach = result.approach?.detail || result.approach?.comparison || 'Approach comparison unavailable.';
         if (window.terminal && typeof window.terminal.logSystem === 'function') {
@@ -435,6 +471,10 @@
         for (let attempt = 0; attempt < 300 && !window.editorManager?.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 100));
         if (!window.editorManager?.editor) throw new Error('The code editor did not finish initializing. Reload this page and use Retry repository loading.');
         await loadRepository();
+        if (assessment.status === 'ready') {
+          const start = await call(`/api/assessments/${assessmentId}/start`, { method: 'POST' });
+          startChallengeCountdown(start.expires_at);
+        }
       }
     }).catch(error => {
       updateRepositoryLoad('failed', 'Editor or repository failed to initialize', error.message || 'request failed');

@@ -31,7 +31,8 @@ def final_action(history: List[Dict[str, Any]], answer: str, profile: Dict[str, 
         question = clean_text(str(result.get("generated_question") or ""))
         selected = clean_text(str(result.get("panel") or ""))
         member = next((n for n in panel_names(panel) if n.casefold() == selected.casefold()), None)
-        if status != "continue" or result.get("question_domain") != "final" or not question or not member:
+        domain = str(result.get("question_domain") or "").lower()
+        if status != "continue" or domain not in {"final", "code"} or not question or not member:
             raise ValueError(f"invalid response: {result}")
     except Exception as exc:
         logger.warning("FINAL single-call response invalid: %s", exc)
@@ -39,4 +40,5 @@ def final_action(history: List[Dict[str, Any]], answer: str, profile: Dict[str, 
     details = next((m for m in panel.values() if isinstance(m, dict) and m.get("name") == member), None)
     return {"action": "ASK_QUESTION", "panel_member": member, "panel_member_details": details,
             "question": question, "question_pattern": question, "selected_area": "Final Evaluation",
-            "stage": "FINAL", "question_kind": "final", "is_final_question": True}
+            "stage": "FINAL", "question_kind": "code_response" if domain == "code" else "final",
+            "is_final_question": True}

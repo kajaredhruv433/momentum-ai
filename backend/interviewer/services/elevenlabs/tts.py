@@ -2,32 +2,39 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
 import httpx
+from dotenv import dotenv_values
+
+
+def _setting(name: str, default: str = "") -> str:
+    """Read local .env updates without requiring a backend restart; OS env is fallback."""
+    file_value = str(dotenv_values(Path(__file__).resolve().parents[3] / ".env").get(name) or "").strip()
+    return file_value or os.getenv(name, default).strip()
 
 
 class ElevenLabsTTS:
     def __init__(self) -> None:
-        self.api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-        self.model_id = os.getenv("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5")
-        self.default_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "hpp4J3VqNfWAUOO0d1Us")
+        self.api_key = ""
+        self.model_id = "eleven_flash_v2_5"
+        self.default_voice_id = "hpp4J3VqNfWAUOO0d1Us"
 
     async def synthesize(
         self,
         text: str,
         member_details: Optional[Mapping[str, Any]] = None,
     ) -> bytes:
-        api_key = self.api_key or os.getenv("ELEVENLABS_API_KEY", "").strip()
+        api_key = _setting("ELEVENLABS_API_KEY")
         if not api_key:
             raise RuntimeError("ELEVENLABS_API_KEY is missing from backend/.env")
-        model_id = self.model_id or os.getenv("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5")
+        model_id = _setting("ELEVENLABS_TTS_MODEL", self.model_id) or self.model_id
         voice_id = (
             (member_details or {}).get("elevenlabs_voice_id")
             or (member_details or {}).get("voice_id")
             or (member_details or {}).get("voiceId")
-            or self.default_voice_id
-            or os.getenv("ELEVENLABS_VOICE_ID", "hpp4J3VqNfWAUOO0d1Us")
+            or _setting("ELEVENLABS_VOICE_ID", self.default_voice_id)
             or "hpp4J3VqNfWAUOO0d1Us"
         )
         if not voice_id:

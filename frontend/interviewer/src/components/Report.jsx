@@ -21,14 +21,35 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
     { label: 'Technical Score', value: report.technical_score ?? 0 },
     { label: 'Skills Match', value: report.skills_match ?? 0 },
     { label: 'Problem Solving', value: report.problem_solving_score ?? 0 },
+    { label: 'Answer Quality', value: report.answer_quality_score ?? 0 },
     { label: 'Communication', value: report.communication_score ?? 0 },
     { label: 'Experience Match', value: report.experience_match ?? 0 },
     { label: 'Qualification Match', value: report.qualification_match ?? 0 },
+    { label: 'Project Contribution', value: report.project_contribution_score ?? 0 },
+    { label: 'Repository Challenge', value: report.code_correctness === 'correct' ? 100 : report.code_correctness === 'incorrect' ? 0 : (report.repository_challenge_score ?? 0) },
   ];
 
   const candidateName = candidateInfo?.name || candidateInfo?.candidate_name || 'Candidate';
   const roleTitle = companyDetails?.role || 'Target Role';
   const companyName = companyDetails?.company_name || '';
+  const approachLabels = {
+    better_approach: 'Better than reference',
+    same_approach: 'Same as reference',
+    same_grade_different_approach: 'Different approach, similar quality',
+    lower_grade_approach: 'Correct, with maintainability gaps',
+    not_evaluated: 'Not evaluated',
+  };
+  const correctnessLabel = {
+    correct: 'Passed (100%)',
+    incorrect: 'Did not pass',
+    unverified: 'Could not be verified',
+    not_completed: 'Not completed',
+  };
+  const approach = report.approach_comparison || 'not_evaluated';
+  const approachPosition = approach === 'better_approach' ? 100 : approach === 'lower_grade_approach' ? 0 : 50;
+  const approachText = approach === 'better_approach' ? 'Better than reference' :
+    approach === 'lower_grade_approach' ? 'Below reference' :
+      ['same_approach', 'same_grade_different_approach'].includes(approach) ? 'Same level as reference' : 'Not evaluated';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -152,6 +173,22 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
               </div>
             ))}
           </div>
+          {report.code_correctness === 'correct' && (
+            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
+              <h4 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: '8px' }}>Repository approach</h4>
+              <svg viewBox="0 0 240 138" role="img" aria-label={`Repository approach: ${approachText}`} style={{ width: '100%', maxWidth: '280px', display: 'block', margin: '0 auto' }}>
+                <path d="M28 118 A92 92 0 0 1 212 118" fill="none" stroke="rgba(239,68,68,.8)" strokeWidth="16" strokeLinecap="round" />
+                <path d="M76 41 A92 92 0 0 1 164 41" fill="none" stroke="rgba(148,163,184,.85)" strokeWidth="16" strokeLinecap="round" />
+                <path d="M212 118 A92 92 0 0 0 164 41" fill="none" stroke="rgba(34,197,94,.85)" strokeWidth="16" strokeLinecap="round" />
+                <line x1="120" y1="112" x2={28 + (184 * approachPosition / 100)} y2={118 - (77 * Math.sin(Math.PI * approachPosition / 100))} stroke="#f8fafc" strokeWidth="4" strokeLinecap="round" />
+                <circle cx="120" cy="112" r="8" fill="#f8fafc" />
+                <text x="27" y="136" fill="#fca5a5" fontSize="10">Below</text>
+                <text x="120" y="24" fill="#cbd5e1" fontSize="10" textAnchor="middle">Same</text>
+                <text x="213" y="136" fill="#86efac" fontSize="10" textAnchor="end">Better</text>
+              </svg>
+              <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>{approachText}</p>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Strengths, Concerns, Hire & Reject Reasons */}
@@ -169,6 +206,16 @@ export default function Report({ report, candidateInfo, companyDetails, canvasSu
               )}
             </ul>
           </div>
+
+          {(report.code_correctness || report.approach_comparison) && (
+            <div className="card" style={{ padding: '18px 20px' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#60a5fa', marginBottom: '10px' }}>Repository Challenge Evidence</h4>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                Correctness: <strong>{correctnessLabel[report.code_correctness] || 'Not evaluated'}</strong>
+                {' · '}Approach: <strong>{approachLabels[report.approach_comparison] || 'Not evaluated'}</strong>
+              </p>
+            </div>
+          )}
 
           {/* Key Concerns */}
           <div className="card" style={{ padding: '18px 20px' }}>

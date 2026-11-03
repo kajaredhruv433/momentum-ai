@@ -7,23 +7,34 @@ export class ElevenLabsVoiceService {
     this.onVolumeLevelCallback = null; this.onSpeechDetectedCallback = null; this.onSilenceTimeoutCallback = null;
     this.onStatusCallback = null;
     this.onSilenceCountdownCallback = null; this.partialAt = 0; this.silenceTimer = null;
+    this.speechStarted = false; this.lastVoiceActivityAt = 0; this.commitRequested = false;
     this.lastSpokenKey = ''; this.lastSpokenAt = 0;
+    this.speechRequestId = 0; this.speechAbortController = null;
+    this.sttRetryTimer = null; this.sttRetryDelay = 1000; this.closed = false; this.sttTerminal = false;
   }
   unlockAudio() { this._context(); }
   _context() { if (!this.audioContext) this.audioContext = new (window.AudioContext || window.webkitAudioContext)(); if (this.audioContext.state === 'suspended') this.audioContext.resume(); return this.audioContext; }
   async requestMicrophonePermission(interviewId) {
     try {
+      this.closed = false;
+      this.sttTerminal = false;
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      this.interviewId = interviewId; this._connectStt(); this._capture(); return { granted: true, status: 'Connected' };
+      this.interviewId = interviewId; this._connectStt(); this._capture(); return { granted: true, status: 'Connecting to speech recognition…' };
     } catch (_) { return { granted: false, status: 'Microphone unavailable' }; }
   }
   _connectStt() {
+    if (this.closed || this.muted || !this.interviewId || [WebSocket.CONNECTING, WebSocket.OPEN].includes(this.socket?.readyState)) return;
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
     this.socket = new WebSocket(`${protocol}://${location.host}/api/interviews/${this.interviewId}/stt`);
-    this.socket.onopen = () => this.onStatusCallback?.('Connected');
-    this.socket.onerror = () => this.onStatusCallback?.('Speech recognition unavailable');
-    this.socket.onclose = () => {
-      if (this.listening) this.onStatusCallback?.('Speech recognition disconnected');
+    const socket = this.socket;
+    socket.onopen = () => { this.sttRetryDelay = 1000; this.onStatusCallback?.('Connected'); };
+    socket.onerror = () => this.onStatusCallback?.('Speech recognition unavailable; reconnecting');
+    socket.onclose = () => {
+      if (socket !== this.socket || this.closed || this.sttTerminal) return;
+      if (this.listening && !this.muted) this.onStatusCallback?.('Reconnecting to speech recognition…');
+      clearTimeout(this.sttRetryTimer);
+      this.sttRetryTimer = setTimeout(() => this._connectStt(), this.sttRetryDelay);
+      this.sttRetryDelay = Math.min(this.sttRetryDelay * 2, 15000);
     };
     this.socket.onmessage = ({ data }) => {
       try { this._sttEvent(JSON.parse(data)); }
@@ -37,7 +48,11 @@ export class ElevenLabsVoiceService {
       if (this.muted) return;
       const input = inputBuffer.getChannelData(0); let energy = 0;
       for (let i = 0; i < input.length; i++) energy += input[i] * input[i];
-      this.onVolumeLevelCallback?.(Math.min(100, Math.round(Math.sqrt(energy / input.length) * 250)));
+      const rms = Math.sqrt(energy / input.length);
+      this.onVolumeLevelCallback?.(Math.min(100, Math.round(rms * 250)));
+      // Use microphone activity as well as transcript updates. Realtime STT
+      // may pause partial results while the candidate is still speaking.
+      if (this.listening && !this.speaking && !this.muted && rms >= 0.018) this._noteVoiceActivity();
       // Keep streaming microphone frames while TTS is playing as well. This
       // is required for barge-in; only an actual STT transcript may interrupt.
       if (this.socket?.readyState === WebSocket.OPEN) {
@@ -69,21 +84,73 @@ export class ElevenLabsVoiceService {
     }
     return pcm;
   }
+  _noteVoiceActivity() {
+    this.speechStarted = true;
+    this.lastVoiceActivityAt = Date.now();
+    if (this.commitRequested) return;
+    clearTimeout(this.silenceTimer);
+    this.silenceTimer = setTimeout(() => {
+      const silenceMs = Date.now() - this.lastVoiceActivityAt;
+      if (silenceMs < 3000) {
+        this.silenceTimer = setTimeout(() => this._commitAfterSilence(), 3000 - silenceMs);
+        return;
+      }
+      this._commitAfterSilence();
+    }, 3000);
+  }
+  _commitAfterSilence() {
+    if (!this.speechStarted || this.commitRequested || this.muted || !this.listening) return;
+    const silenceMs = Date.now() - this.lastVoiceActivityAt;
+    if (silenceMs < 3000) {
+      this.silenceTimer = setTimeout(() => this._commitAfterSilence(), 3000 - silenceMs);
+      return;
+    }
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.commitRequested = true;
+      this.socket.send(JSON.stringify({ type: 'commit' }));
+    }
+  }
   _sttEvent(event) {
     if (event.type === 'partial' && event.text?.trim()) {
-      this.partialAt = Date.now(); this.onTranscriptCallback?.(event.text); this.onSpeechDetectedCallback?.();
+      this.partialAt = Date.now(); this._noteVoiceActivity(); this.onTranscriptCallback?.(event.text); this.onSpeechDetectedCallback?.();
       if (this.speaking) { this.stopSpeaking(); this.onBargeInCallback?.(); }
       // A recognized transcript is proof that the candidate has taken the
       // floor, including when they began speaking during interviewer TTS.
       this.listening = true;
-      clearTimeout(this.silenceTimer); this.silenceTimer = setTimeout(() => this.socket?.readyState === WebSocket.OPEN && this.socket.send(JSON.stringify({ type: 'commit' })), 2000);
-    } else if (event.type === 'final') { clearTimeout(this.silenceTimer); const text = event.text?.trim(); if (text) this.onSilenceTimeoutCallback?.(text); }
-    else if (event.type === 'error') { console.warn('[STT] Server error:', event.message); this.onStatusCallback?.(`Speech recognition error: ${event.message || 'unknown error'}`); }
+      // The final transcript event follows a commit after three seconds with
+      // no detected microphone activity, not merely a pause in STT partials.
+    } else if (event.type === 'final') {
+      clearTimeout(this.silenceTimer);
+      this.speechStarted = false; this.lastVoiceActivityAt = 0; this.commitRequested = false;
+      const text = event.text?.trim(); if (text) this.onSilenceTimeoutCallback?.(text);
+    }
+    else if (event.type === 'error') {
+      console.warn('[STT] Server error:', event.message);
+      if (event.terminal) this.sttTerminal = true;
+      this.onStatusCallback?.(event.message ? `Speech recognition error: ${event.message}` : 'Speech recognition error');
+    }
   }
   startListening(callback) { if (callback) this.onTranscriptCallback = callback; this.listening = true; }
-  stopListening() { this.listening = false; clearTimeout(this.silenceTimer); }
-  resetRecognition() { clearTimeout(this.silenceTimer); }
-  setMuted(value) { this.muted = value; this.stream?.getAudioTracks().forEach(track => { track.enabled = !value; }); }
+  stopListening() { this.listening = false; clearTimeout(this.silenceTimer); this.speechStarted = false; this.commitRequested = false; }
+  resetRecognition() { clearTimeout(this.silenceTimer); this.speechStarted = false; this.commitRequested = false; }
+  setMuted(value) {
+    const wasMuted = this.muted;
+    this.muted = value;
+    this.stream?.getAudioTracks().forEach(track => { track.enabled = !value; });
+    if (value && !wasMuted && this.socket) {
+      // Coding tasks do not use STT. Close this session intentionally so an
+      // idle provider timeout cannot surface as a recognition error.
+      const socket = this.socket;
+      this.socket = null;
+      clearTimeout(this.sttRetryTimer);
+      socket.close(1000, 'Microphone paused');
+      this.onStatusCallback?.('Voice input paused');
+    } else if (!value && wasMuted) {
+      this.onStatusCallback?.('Connecting to speech recognition…');
+      this.sttRetryDelay = 1000;
+      this._connectStt();
+    }
+  }
   isInterviewerSpeaking() { return this.speaking; }
   async speakPersonaMessage(text, speaker, gender, done, allowReplay, memberDetails) {
     if (!text) return;
@@ -91,12 +158,21 @@ export class ElevenLabsVoiceService {
     const now = Date.now();
     if (spokenKey === this.lastSpokenKey && now - this.lastSpokenAt < 2000) return;
     this.lastSpokenKey = spokenKey; this.lastSpokenAt = now;
-    this.stopSpeaking(); this.speaking = true; this.onSpeakingStateCallback?.({ speaking: true, speaker });
+    this.stopSpeaking();
+    const requestId = ++this.speechRequestId;
+    const abortController = new AbortController();
+    this.speechAbortController = abortController;
+    this.speaking = true; this.onSpeakingStateCallback?.({ speaking: true, speaker });
     try {
       const params = new URLSearchParams({ text, speaker: speaker || '', gender: gender || '', interview_id: this.interviewId || '' });
-      const response = await fetch(`/api/interviews/${this.interviewId}/tts?${params}`);
-      if (!response.ok) throw new Error(`TTS request failed (${response.status})`);
+      const response = await fetch(`/api/interviews/${this.interviewId}/tts?${params}`, { signal: abortController.signal });
+      if (requestId !== this.speechRequestId) return;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `TTS request failed (${response.status})`);
+      }
       const audioBytes = await response.arrayBuffer();
+      if (requestId !== this.speechRequestId) return;
       if (!audioBytes.byteLength) throw new Error('TTS returned an empty audio file');
 
       // The start button unlocks this AudioContext before the slower interview
@@ -105,6 +181,7 @@ export class ElevenLabsVoiceService {
       const context = this._context();
       if (context.state === 'suspended') await context.resume();
       const audioBuffer = await context.decodeAudioData(audioBytes);
+      if (requestId !== this.speechRequestId) return;
       const source = context.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(context.destination);
@@ -118,19 +195,23 @@ export class ElevenLabsVoiceService {
       };
       source.start();
     } catch (error) {
+      if (requestId !== this.speechRequestId || error.name === 'AbortError') return;
       console.error('ElevenLabs speech playback failed', error);
       this.speaking = false;
       this.currentAudio = null;
       this.onSpeakingStateCallback?.({ speaking: false, speaker });
-      this.onStatusCallback?.('Speech playback failed. Use Replay question to try again.');
+      this.onStatusCallback?.(error.message || 'Speech playback failed. Use Replay question to try again.');
     }
   }
   stopSpeaking() {
+    this.speechRequestId++;
+    this.speechAbortController?.abort();
+    this.speechAbortController = null;
     if (this.currentAudio) {
       try { this.currentAudio.stop(); } catch (_) {}
       this.currentAudio = null;
     }
     this.speaking = false;
   }
-  leaveChannel() { this.stopListening(); this.stopSpeaking(); this.socket?.close(); this.processor?.disconnect(); this.stream?.getTracks().forEach(t => t.stop()); }
+  leaveChannel() { this.closed = true; clearTimeout(this.sttRetryTimer); this.stopListening(); this.stopSpeaking(); this.socket?.close(); this.processor?.disconnect(); this.stream?.getTracks().forEach(t => t.stop()); }
 }

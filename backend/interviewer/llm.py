@@ -39,7 +39,7 @@ def get_baseten_client() -> OpenAI:
 
 
 def get_llm_client() -> tuple[OpenAI, str, str]:
-    """Use competition-required Meta Model API when configured; retain Baseten fallback."""
+    """Choose the configured starting provider for complementary model routing."""
     if META_API_KEY:
         return OpenAI(base_url=META_BASE_URL, api_key=META_API_KEY, timeout=90, max_retries=1), "META", META_MODEL
     return get_baseten_client(), "BASETEN", os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
@@ -65,7 +65,7 @@ def _response_text(response) -> str:
     return ""
 
 
-def _chat_completion(client: OpenAI, model: str, messages, token_limit: int, provider: str = "BASETEN"):
+def _chat_completion(client: OpenAI, model: str, messages, token_limit: int, provider: str = "BASETEN", timeout_seconds: Optional[float] = None):
     """Call Muse Spark with a low reasoning budget suited to interview turns."""
     options = dict(
         model=model,
@@ -75,11 +75,37 @@ def _chat_completion(client: OpenAI, model: str, messages, token_limit: int, pro
     )
     if provider == "BASETEN":
         options["extra_body"] = {"reasoning_effort": DEFAULT_REASONING_EFFORT}
+    if timeout_seconds is not None:
+        client = client.with_options(timeout=timeout_seconds, max_retries=0)
     return client.chat.completions.create(**options)
 
 
-def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
-    """Generate text through Meta Model API when configured, with Baseten fallback."""
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Recognize provider quota/rate-limit errors eligible for capacity routing."""
+    status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+    detail = str(exc).lower()
+    return status == 429 or any(term in detail for term in (
+        "rate limit", "rate_limit", "tokens per minute", "token per minute",
+        "too many requests", "quota exceeded",
+    ))
+
+
+def _routed_chat_completion(messages, token_limit: int, timeout_seconds: Optional[float] = None):
+    """Use Meta for normal interview calls and Baseten for Meta quota pressure."""
+    client, provider, model = get_llm_client()
+    try:
+        return _chat_completion(client, model, messages, token_limit, provider, timeout_seconds), provider
+    except Exception as exc:
+        baseten_key = os.getenv("BASETEN_API_KEY", "").strip()
+        if provider != "META" or not baseten_key or not _is_rate_limit_error(exc):
+            raise
+        baseten_client = get_baseten_client()
+        baseten_model = os.getenv("BASETEN_MODEL", DEFAULT_MODEL)
+        return _chat_completion(baseten_client, baseten_model, messages, token_limit, "BASETEN", timeout_seconds), "BASETEN"
+
+
+def ask_llm(prompt: str, max_output_tokens: Optional[int] = None, timeout_seconds: Optional[float] = None) -> str:
+    """Generate text through the configured interview model routing."""
     if not isinstance(prompt, str):
         raise TypeError("prompt must be a string")
     if not prompt.strip():
@@ -88,10 +114,8 @@ def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
     if token_limit < 1:
         raise ValueError("max_output_tokens must be >= 1")
 
-    client, provider, model = get_llm_client()
-
     messages = [{"role": "user", "content": prompt}]
-    response = _chat_completion(client, model, messages, token_limit, provider)
+    response, provider = _routed_chat_completion(messages, token_limit, timeout_seconds)
     content = _response_text(response)
     if not content:
         # A reasoning model may spend the entire completion budget thinking.
@@ -100,7 +124,7 @@ def ask_llm(prompt: str, max_output_tokens: Optional[int] = None) -> str:
             "role": "user",
             "content": "Return the requested answer now. Keep it concise and include only the answer text.",
         }]
-        retry = _chat_completion(client, model, retry_messages, max(token_limit, 1024) * 2, provider)
+        retry, provider = _routed_chat_completion(retry_messages, max(token_limit, 1024) * 2, timeout_seconds)
         content = _response_text(retry)
         if not content:
             choice = retry.choices[0] if retry.choices else None
@@ -118,8 +142,6 @@ def ask_llm_chat(messages: Sequence[Dict[str, str]], max_output_tokens: Optional
         raise ValueError("messages cannot be empty")
     token_limit = DEFAULT_MAX_OUTPUT_TOKENS if max_output_tokens is None else int(max_output_tokens)
 
-    client, provider, model = get_llm_client()
-
     formatted_messages = []
     for message in messages:
         if not isinstance(message, dict):
@@ -129,7 +151,7 @@ def ask_llm_chat(messages: Sequence[Dict[str, str]], max_output_tokens: Optional
             "content": message.get("content", "")
         })
 
-    response = _chat_completion(client, model, formatted_messages, token_limit, provider)
+    response, provider = _routed_chat_completion(formatted_messages, token_limit)
     content = _response_text(response)
     if not content:
         choice = response.choices[0] if response.choices else None
@@ -140,13 +162,9 @@ def ask_llm_chat(messages: Sequence[Dict[str, str]], max_output_tokens: Optional
 
 def analyze_image(prompt: str, image_base64: str, mime_type: str = "image/png") -> str:
     """Send text prompt and optional image to Baseten Vision / multimodal or fallback."""
-    client, provider, model = get_llm_client()
-
     try:
-        response = _chat_completion(
-            client,
-            model=model,
-            messages=[
+        response, provider = _routed_chat_completion(
+            [
                 {
                     "role": "user",
                     "content": [
@@ -159,7 +177,6 @@ def analyze_image(prompt: str, image_base64: str, mime_type: str = "image/png") 
                 }
             ],
             token_limit=DEFAULT_MAX_OUTPUT_TOKENS,
-            provider=provider,
         )
         content = _response_text(response)
         if content:

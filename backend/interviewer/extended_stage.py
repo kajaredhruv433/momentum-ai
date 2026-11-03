@@ -32,7 +32,7 @@ def next_extended_action(history: List[Dict[str, Any]], answer: str, profile: Di
         domain = str(result.get("question_domain") or "").lower()
         selected = clean_text(str(result.get("panel") or ""))
         member = next((n for n in panel_names(panel) if n.casefold() == selected.casefold()), None)
-        if status != "continue" or domain not in {"clarification", "project", "area"} or not question or not member:
+        if status != "continue" or domain not in {"clarification", "project", "area", "code"} or not question or not member:
             raise ValueError(f"invalid response: {result}")
     except Exception as exc:
         logger.warning("EXTENDED single-call response invalid: %s", exc)
@@ -40,4 +40,4 @@ def next_extended_action(history: List[Dict[str, Any]], answer: str, profile: Di
     details = next((m for m in panel.values() if isinstance(m, dict) and m.get("name") == member), None)
     return {"action": "ASK_QUESTION", "panel_member": member, "panel_member_details": details,
             "question": question, "question_pattern": question, "selected_area": domain,
-            "stage": "EXTENDED", "question_kind": domain}
+            "stage": "EXTENDED", "question_kind": "code_response" if domain == "code" else domain}

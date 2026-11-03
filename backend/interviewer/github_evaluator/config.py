@@ -27,6 +27,7 @@ class Settings:
     frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:8080")
     database_path = os.getenv("REPO_EVALUATOR_DATABASE_PATH", str(BACKEND_ROOT / "data" / "repo_evaluator.sqlite3"))
     assessment_minutes = int(os.getenv("ASSESSMENT_MINUTES", "60"))
+    interview_code_editor_seconds = 5 * 60
     max_repository_files = int(os.getenv("MAX_REPOSITORY_FILES", "2500"))
     max_knowledge_chunks = int(os.getenv("MAX_KNOWLEDGE_CHUNKS", "5000"))
     max_file_bytes = int(os.getenv("MAX_FILE_BYTES", "300000"))

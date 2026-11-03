@@ -58,6 +58,7 @@ class EvaluationReportSchema(BaseModel):
     technical_score: int = Field(ge=0, le=100)
     communication_score: int = Field(ge=0, le=100)
     problem_solving_score: int = Field(ge=0, le=100)
+    answer_quality_score: int = Field(default=50, ge=0, le=100)
     strengths: List[str] = Field(default_factory=list)
     concerns: List[str] = Field(default_factory=list)
     hire_reasons: List[str] = Field(default_factory=list)

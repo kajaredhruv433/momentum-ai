@@ -23,7 +23,11 @@ def next_normal_action(history: List[Dict[str, Any]], answer: str, profile: Dict
         company_requirements=as_json(profile.get("company_requirements") or profile.get("company_details") or {}),
         candidate_profile=as_json(profile), projects=as_json(profile.get("projects") or []),
         areas_to_cover=as_json(areas_to_cover), covered_areas=as_json(covered_areas), panels=as_json(panel),
-        question_answer_history=as_json(history), last_candidate_response=answer,
+        question_answer_history=as_json([
+            {**item, "candidate_answer": item.get("candidate_answer_for_prompt", item.get("candidate_answer", ""))}
+            for item in history
+        ]),
+        last_candidate_response=(history[-1].get("candidate_answer_for_prompt", answer) if history else answer),
         repo_assessment_option=(
             'The repository evaluator is READY. You may choose question_domain "repo_assessment" as the fourth interview option to invite the candidate into the prepared temporary coding editor.'
             if repo_assessment_ready else
@@ -57,11 +61,12 @@ def next_normal_action(history: List[Dict[str, Any]], answer: str, profile: Dict
                 "question_pattern": "Continue project discussion while repository evaluator prepares.",
                 "selected_area": "project", "stage": "NORMAL", "question_kind": "project",
             }
-        if status != "continue" or domain not in {"draw", "clarification", "project", "area"} or not question or not member:
+        if status != "continue" or domain not in {"draw", "clarification", "project", "area", "code"} or not question or not member:
             raise ValueError(f"invalid response: {result}")
     except Exception as exc:
         logger.warning("NORMAL single-call response invalid: %s", exc)
         return {"action": "CONCLUDE"}
     return {"action": "ASK_QUESTION", "panel_member": member, "panel_member_details": _member(panel, member),
             "question": question, "question_pattern": question, "selected_area": domain, "stage": "NORMAL",
-            "question_kind": "system_design" if domain == "draw" else domain, "requires_canvas": domain == "draw"}
+            "question_kind": "system_design" if domain == "draw" else "code_response" if domain == "code" else domain,
+            "requires_canvas": domain == "draw"}

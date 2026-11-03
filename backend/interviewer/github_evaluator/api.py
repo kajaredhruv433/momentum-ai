@@ -93,6 +93,10 @@ async def _sandbox_expiry_sweeper():
                 except (TypeError, json.JSONDecodeError):
                     pass
                 expires_at = secret.get("expires_at")
+                if expires_at and secret.get("time_limit_seconds"):
+                    # Leave a short server-side grace window for the browser's
+                    # automatic save-and-submit request at the five-minute mark.
+                    expires_at = int(expires_at) + 60
                 if not expires_at:
                     # needs_review sessions have no challenge secret; bound
                     # their workspace lifetime by the assessment creation time.
@@ -346,6 +350,39 @@ def assessment_status(assessment_id: str, request: Request):
     except Exception as exc:
         logger.exception("Assessment status lookup failed for %s", assessment_id)
         raise HTTPException(503, "Assessment status is temporarily unavailable; retrying is safe") from exc
+    finally:
+        db.close()
+
+
+@app.post("/api/assessments/{assessment_id}/start")
+def start_interview_assessment_timer(assessment_id: str, request: Request):
+    """Start an interview code challenge's five-minute deadline on first editor load."""
+    candidate = _session(request)
+    db = connect()
+    try:
+        assessment = _assessment(db, assessment_id, candidate["id"])
+        if assessment["status"] != "ready":
+            raise HTTPException(409, "The code editor is not ready yet.")
+        row = db.execute("SELECT id,secret,public_json FROM challenges WHERE assessment_id=?", (assessment_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "The code challenge was not found.")
+        secret = json.loads(row["secret"] or "{}")
+        public = json.loads(row["public_json"] or "{}")
+        limit = int(secret.get("time_limit_seconds") or settings.interview_code_editor_seconds)
+        if not secret.get("started_at"):
+            started_at = int(time.time())
+            secret["started_at"] = started_at
+            secret["expires_at"] = started_at + limit
+            public["started_at"] = started_at
+            public["expires_at"] = started_at + limit
+            public["time_limit_seconds"] = limit
+            db.execute("UPDATE challenges SET secret=?,public_json=? WHERE id=?", (json_dump(secret), json_dump(public), row["id"]))
+            db.commit()
+        return {
+            "started_at": int(secret["started_at"]),
+            "expires_at": int(secret["expires_at"]),
+            "time_limit_seconds": limit,
+        }
     finally:
         db.close()
 
@@ -723,6 +760,8 @@ async def files(assessment_id: str, request: Request):
 async def read_file(assessment_id: str, path: str, request: Request):
     candidate = _session(request); db = connect(); a = _assessment(db, assessment_id, candidate["id"]); db.close()
     if not a["workspace"]: raise HTTPException(409, "Daytona workspace is not prepared")
+    if _is_locked_challenge_file(assessment_id, path):
+        raise HTTPException(403, "This challenge file is visible in the explorer but cannot be opened.")
     try:
         content = await asyncio.to_thread(container_workspace.read_file, a["workspace"], path, settings.max_workspace_read_bytes)
         return {"path": path, "content": content}
@@ -739,6 +778,8 @@ async def save_file(assessment_id: str, path: str, body: FileUpdate, request: Re
     candidate = _session(request); db = connect(); a = _assessment(db, assessment_id, candidate["id"])
     if a["status"] not in {"ready", "needs_review"} or not a["workspace"]: db.close(); raise HTTPException(409, "Daytona assessment workspace is not editable")
     db.close()
+    if _is_locked_challenge_file(assessment_id, path):
+        raise HTTPException(403, "This challenge file cannot be edited.")
     try:
         await asyncio.to_thread(container_workspace.write_file, a["workspace"], path, body.content)
         return {"saved": True}
@@ -746,6 +787,19 @@ async def save_file(assessment_id: str, path: str, body: FileUpdate, request: Re
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(503, "Temporary Daytona workspace is unavailable") from exc
+
+
+def _is_locked_challenge_file(assessment_id: str, path: str) -> bool:
+    db = connect()
+    try:
+        row = db.execute("SELECT c.secret FROM assessments a JOIN challenges c ON c.id=a.challenge_id WHERE a.id=?", (assessment_id,)).fetchone()
+        if not row:
+            return False
+        secret = json.loads(row["secret"] or "{}")
+        locked_path = str(secret.get("test_path") or "")
+        return bool(locked_path and path.replace("\\", "/").lstrip("/") == locked_path)
+    finally:
+        db.close()
 
 
 async def _retry_dependency_setup(challenge_id: str, workspace: str, language: str, dependencies: list[str]):
@@ -826,7 +880,12 @@ async def submit(assessment_id: str, request: Request):
         db.close(); raise HTTPException(409, "This assessment does not have a temporary Daytona repository. Analyze it again.")
     secret = json.loads(challenge["secret"])
     now = int(time.time())
-    if now < secret.get("started_at", now) or now > secret.get("expires_at", now + 1):
+    started_at = secret.get("started_at")
+    expires_at = secret.get("expires_at")
+    if started_at is None or expires_at is None:
+        db.close()
+        raise HTTPException(409, "Open the code editor to start its timer before submitting.")
+    if now < int(started_at) or now > int(expires_at) + 60:
         db.close()
         try:
             await asyncio.to_thread(container_workspace.remove_workspace, workspace_ref)

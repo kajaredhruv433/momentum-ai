@@ -190,7 +190,7 @@ export default function VoiceControls({
                   ? 'Interruption and STT are paused while muted.'
                   : isInterviewerSpeaking
                   ? '⚡ Interrupts instantly when you speak words (immune to wind/noise/echo).'
-                  : 'Hands-free turn-taking: pause 2.5s after speaking to auto-submit.'}
+                  : 'Hands-free turn-taking: pause 3s after speaking to auto-submit.'}
               </span>
             </div>
           </div>

@@ -394,11 +394,13 @@ class AppController {
     } else {
       // File node
       const iconClass = window.editorManager.getFileIcon(node.name);
+      const locked = window.editorManager.lockedFiles?.has(node.path);
       row.innerHTML = `
         <span class="tree-indent-spacer"></span>
         <span class="codicon ${iconClass} file-icon"></span>
-        <span class="tree-label">${node.name}</span>
+        <span class="tree-label">${node.name}${locked ? ' · locked' : ''}</span>
       `;
+      if (locked) row.title = 'Visible for reference, but cannot be opened.';
 
       row.addEventListener('click', (e) => {
         e.stopPropagation();

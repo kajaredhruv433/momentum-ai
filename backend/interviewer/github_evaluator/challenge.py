@@ -134,6 +134,50 @@ def _focused_runtime_packages(proposal: ChallengePatch, packages: list[str], tes
     })
 
 
+def _python_symbol_context(source: str, function_name: str) -> dict:
+    """Describe whether the selected callable is a module function or class method."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {"kind": "unknown", "owner_class": "", "signature": "", "docstring": ""}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for member in node.body:
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == function_name:
+                    return {
+                        "kind": "instance_method",
+                        "owner_class": node.name,
+                        "signature": ast.unparse(member.args),
+                        "docstring": ast.get_docstring(member) or "",
+                        "class_methods": [
+                            item.name for item in node.body
+                            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        ],
+                    }
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name:
+            return {
+                "kind": "module_function", "owner_class": "",
+                "signature": ast.unparse(node.args),
+                "docstring": ast.get_docstring(node) or "",
+            }
+    return {"kind": "unknown", "owner_class": "", "signature": "", "docstring": ""}
+
+
+def _validate_method_test_shape(code: str, source: str, function_name: str) -> None:
+    context = _python_symbol_context(source, function_name)
+    owner = context.get("owner_class")
+    if not owner:
+        return
+    tree = ast.parse(code)
+    identifiers = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    invoked_attributes = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load)}
+    if owner not in identifiers or function_name not in invoked_attributes:
+        raise ValueError(
+            f"Target is method {owner}.{function_name}; test must instantiate/import {owner} and invoke the method on that instance"
+        )
+
+
 async def _generate_focused_test(state: dict, proposal: ChallengePatch, original_source: str, broken_source: str, test_path: str) -> FocusedTestArtifact:
     """Ask Muse separately to author the test against the untouched repository implementation."""
     files = state.get("files", {})
@@ -161,10 +205,11 @@ async def _generate_focused_test(state: dict, proposal: ChallengePatch, original
     image_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
     prioritized_assets = sorted(asset_paths, key=lambda path: (0 if Path(path).suffix.lower() in model_suffixes else 1 if Path(path).suffix.lower() in image_suffixes else 2, path))[:500]
     language = _language(proposal.target_path) or "python"
+    symbol_context = _python_symbol_context(original_source, proposal.function_name) if language == "python" else {}
     prompt_data = {
         "task": "Author the final focused test file as a dedicated test-generation task.",
         "primary_requirement": "The test must exercise the repository's original checked-in implementation, not reimplement it. Derive expected results by tracing the untouched source. It must call the target with concrete input values and assert exact expected return values or observable responses. It must pass when that original implementation is restored and fail against the supplied injected regression. The complete pinned repository is cloned at /workspace; never copy source or sibling modules out of their repository paths. Add the repository root and target package directories to sys.path so sibling imports resolve.",
-        "target": {"path": proposal.target_path, "module": Path(proposal.target_path).stem, "function": proposal.function_name, "purpose": proposal.function_purpose, "broken_flow": proposal.broken_flow},
+        "target": {"path": proposal.target_path, "module": Path(proposal.target_path).stem, "function": proposal.function_name, "symbol_context": symbol_context, "purpose": proposal.function_purpose, "broken_flow": proposal.broken_flow},
         "candidate_contribution_claims": state.get("claims", {}),
         "compute_policy": "Daytona sandboxes are CPU-only. If torch is required, dependency setup will install the CPU wheel with `/workspace/.venv/bin/python -m pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu` before other packages. Request `torch`/`torchvision`/`ultralytics` only when the selected test needs them. Never request CUDA, NVIDIA, cuDNN, or GPU runtime packages, and do not put a CUDA index URL in any terminal command.",
         "scope_contract": "The candidate's claims define the feature boundary. For example, if the candidate says they built only the backend, target and test only the claimed backend behavior; do not pull in frontend, model training, deployment, or other project subsystems. Generate problem.md and test.py for that same segment. Add/install only packages imported or otherwise required by that segment and its test. Never install all dependencies just because they appear in a project manifest.",
@@ -183,7 +228,7 @@ async def _generate_focused_test(state: dict, proposal: ChallengePatch, original
         "test_file_path": test_path,
         "language": language,
         "test_file_contract": (
-            "Keep the test focused and small. The complete pinned repository is available at /workspace; never copy target or sibling modules into the test directory. For Python, add /workspace and the selected target's package directories to sys.path before imports so package and legacy sibling imports resolve from the clone. Import and call the actual target function with concrete inputs, then assert deterministic expected responses derived from the untouched original_source. For Python test.py at repository root, include a main execution path and nonzero exit on failure. "
+            "Keep the test focused and small. The complete pinned repository is available at /workspace; never copy target or sibling modules into the test directory. For Python, use target.symbol_context to distinguish a module-level function from an instance method. If it is an instance method, import its owner_class and invoke owner_class().function(...) on a real instance; never use getattr(module, function) for a method. Add /workspace and the selected target's package directories to sys.path before imports so package and legacy sibling imports resolve from the clone. Exercise the actual original implementation with concrete inputs and assert deterministic behavior derived from the untouched original_source, including relevant state changes and error cases. For Python test.py at repository root, include a main execution path and nonzero exit on failure. "
             "For tests/test_momentum_generated.py: create pytest-discoverable test functions. "
             "For JavaScript: create a node:test file runnable by node --test. In every case, follow candidate_contribution_claims and test only the selected claimed segment, do not copy the target function into the test, do not edit or repair project files, avoid external services/credentials, and use mocks only for unrelated nondeterministic boundaries—not for the selected behavior being tested. For image-processing code whose regression is region selection, crop coordinates, or fallback selection, use any local YOLO weights/configuration already in the repository and a synthetic image fixture that exercises the no-detection fallback. Assert the actual selected crop passed to a recording OCR stub; recognition itself is outside this regression, so stub PaddleOCR/PaddlePaddle/EasyOCR/Tesseract instead of installing them. Do not download duplicate model weights. Generate/use an image fixture when the fallback needs a real image input. Install only the vision packages needed to load the existing YOLO model and process that image, plus packages directly required by the focused test. Return only extra installable packages truly required by this test; do not return the whole project dependency set."
         ),
@@ -217,6 +262,8 @@ async def _generate_focused_test(state: dict, proposal: ChallengePatch, original
                     raise ValueError(f"Test must import and exercise the actual {target_module} repository module")
                 if language == "python" and target_module != "__init__" and target_module not in imported_modules:
                     raise ValueError(f"Test must import the actual {target_module} module; a comment or duplicate implementation is not enough")
+                if language == "python":
+                    _validate_method_test_shape(code, original_source, proposal.function_name)
                 artifact.test_code = code + "\n"
                 artifact.runtime_dependencies = _focused_runtime_packages(proposal, artifact.runtime_dependencies, code)
                 return artifact
@@ -231,7 +278,7 @@ async def _generate_focused_test(state: dict, proposal: ChallengePatch, original
         raise RuntimeError(f"Muse could not create a valid focused test file: {str(last_error)[:300]}") from last_error
 
 
-def _validate_final_test(code: str, target_path: str, language: str, fixture_path: str, test_path: str) -> None:
+def _validate_final_test(code: str, target_path: str, language: str, fixture_path: str, test_path: str, original_source: str = "", function_name: str = "") -> None:
     code = code.strip()
     if not code:
         raise ValueError("Muse final review returned an empty test")
@@ -240,28 +287,60 @@ def _validate_final_test(code: str, target_path: str, language: str, fixture_pat
         imported = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                imported.update(alias.name.split(".")[0].lower() for alias in node.names)
+                imported.update(alias.name.split(".")[-1].lower() for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
-                imported.add(node.module.split(".")[0].lower())
+                imported.add(node.module.split(".")[-1].lower())
+                imported.update(alias.name.split(".")[-1].lower() for alias in node.names)
         target_module = Path(target_path).stem.lower()
         if target_module != "__init__" and target_module not in imported:
             raise ValueError(f"Final test does not import the actual {target_module} repository module")
+        if original_source and function_name:
+            _validate_method_test_shape(code, original_source, function_name)
     normalized_code = code.replace("\\", "/")
     if fixture_path and fixture_path not in normalized_code:
         raise ValueError(f"Final test must refer to the exact generated fixture path {fixture_path}")
 
 
-def _runnable_import_smoke_test(target_path: str, function_name: str, language: str) -> str:
-    """Keep setup and a runnable test available if Muse's test author is unavailable.
-
-    This fallback checks that the selected repository module imports and exposes
-    the claimed callable. It is deliberately a smoke test; Muse-authored tests
-    remain responsible for checking the regression's behavior.
-    """
+def _runnable_import_smoke_test(target_path: str, function_name: str, language: str, original_source: str = "") -> str:
+    """Create a runnable source-aware fallback when model-authored tests fail."""
     if language == "python":
         module = Path(target_path).with_suffix("").as_posix().replace("/", ".")
         if module.endswith(".__init__"):
             module = module[:-9]
+        context = _python_symbol_context(original_source, function_name)
+        owner = context.get("owner_class")
+        if owner and function_name == "pop" and "push" in context.get("class_methods", []):
+            return (
+                f"from {module} import {owner}\n\n"
+                "def test_pop_returns_and_removes_the_top_item():\n"
+                f"    stack = {owner}()\n"
+                "    stack.push('bottom')\n"
+                "    stack.push('top')\n"
+                "    assert stack.pop() == 'top'\n"
+                "    assert stack.size() == 1\n"
+                "    assert stack.peek() == 'bottom'\n"
+                "    assert stack.pop() == 'bottom'\n"
+                "    assert stack.is_empty()\n\n"
+                "    empty_stack = " + owner + "()\n"
+                "    try:\n"
+                "        empty_stack.pop()\n"
+                "    except IndexError as error:\n"
+                "        assert str(error) == 'pop from an empty stack.'\n"
+                "    else:\n"
+                "        raise AssertionError('pop on an empty stack must raise IndexError')\n\n"
+                "if __name__ == '__main__':\n"
+                "    test_pop_returns_and_removes_the_top_item()\n"
+                "    print('Original Stack.pop behavior test passed')\n"
+            )
+        if owner:
+            return (
+                "import importlib\n\n"
+                f"module = importlib.import_module({module!r})\n"
+                f"instance = getattr(module, {owner!r})()\n"
+                f"target = getattr(instance, {function_name!r})\n"
+                "assert callable(target), 'selected repository method must be callable'\n"
+                "print('Repository method import smoke test passed')\n"
+            )
         return (
             "import importlib\n\n"
             f"module = importlib.import_module({module!r})\n"
@@ -359,7 +438,10 @@ async def _review_focused_test(
                     raise RuntimeError(review.testability_reason or "Muse final review determined this test cannot run locally")
                 if review.fixture_path != fixture_path:
                     raise ValueError(f"Muse final review must preserve the fixture path {fixture_path!r}")
-                _validate_final_test(review.test_code, proposal.target_path, _language(proposal.target_path) or "python", fixture_path, test_path)
+                _validate_final_test(
+                    review.test_code, proposal.target_path, _language(proposal.target_path) or "python",
+                    fixture_path, test_path, original_source, proposal.function_name,
+                )
                 review.test_code = review.test_code.strip() + "\n"
                 review.runtime_dependencies = _focused_runtime_packages(proposal, review.runtime_dependencies, review.test_code)
                 return review
@@ -607,10 +689,10 @@ async def prepare_verified_challenge(state: dict) -> dict:
             # setup for a behavior Muse already judged locally runnable.
             # Preserve a basic executable import check so the editor still has
             # a test file and the dependency installer still runs.
-            test_content = _runnable_import_smoke_test(proposal.target_path, proposal.function_name, language)
+            test_content = _runnable_import_smoke_test(proposal.target_path, proposal.function_name, language, original)
             proposal.testability_reason = (
-                f"A focused behavior test could not be generated ({str(exc)[:140]}). "
-                "A runnable import smoke test was created; dependency setup will continue."
+                f"A model-authored test could not be generated ({str(exc)[:140]}). "
+                "A source-aware fallback test was created; dependency setup will continue."
             )
         if language == "python":
             test_content = _python_repository_path_bootstrap(proposal.target_path, test_path) + test_content

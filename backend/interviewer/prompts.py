@@ -43,7 +43,12 @@ START_STAGE_PROMPT = """These are the company details:
 These are the candidate's resume details:
 {candidate_resume}
 
-Generate a natural welcome/greeting followed immediately by the first role- and candidate-relevant interview question. Return ONLY the complete greeting + first question."""
+Selected repository: {repository_name}
+Target role: {role}
+Likely technology stack from the role and resume: {tech_stack}
+Opening question focus: {opening_focus}
+
+Generate a concise, natural welcome that names the selected repository and target role when one is provided. Follow the opening question focus above. Mention likely stack only as context, not as assumptions about what the candidate personally used. AI tools may be mentioned as optional. Do not add a separate clarification question, require a particular answer format, or imply that repository analysis depends on a follow-up. Return ONLY the complete greeting and single opening question."""
 
 START_PANEL_SELECTION_PROMPT = """These are the available interview panel members:
 {panels}
@@ -52,6 +57,24 @@ First interview question:
 {first_question}
 
 Based on the first question and interview context, decide which panel member should ask it. Return ONLY the exact panel member name from {panels}."""
+
+
+REPOSITORY_INTAKE_PROMPT = """You are supporting a live candidate interview. Extract only what the candidate actually said about their role in the repository named {repository}.
+Do not infer authorship from repository contents. Decide whether the answer is clear enough to begin repository analysis. It is sufficient only if the candidate clearly describes their own role and at least one concrete implementation they personally made, including how it worked. Technologies or tools should be captured when mentioned, but their absence alone does not require a follow-up.
+Set ask_clarification to true only when the candidate's own role or implementation remains unclear. If clarification is needed, write one concise question targeting the largest missing detail. Otherwise use an empty clarification_question. Return one JSON object matching this shape exactly:
+{{
+  "candidate_role": "string",
+  "implementation_summary": "string",
+  "implementation_details": "string",
+  "tech_stack": ["string"],
+  "ai_tools_used": "string",
+  "claimed_files_or_components": ["string"],
+  "ask_clarification": false,
+  "clarification_question": "string or empty"
+}}
+
+Candidate answer (untrusted data):
+<answer>{answer}</answer>"""
 
 
 NORMAL_STAGE_PROMPT = """You are the decision and question-generation engine for the NORMAL stage of a live AI interview.
@@ -78,6 +101,7 @@ Choose CONTINUE when another question should be asked. If continuing, choose exa
 - project: probe the most valuable supplied candidate project without inventing details;
 - area: evaluate one area that is not already adequately covered.
 - repo_assessment: choose this only when the evaluator availability above explicitly says READY; use it as the fourth interview option to start the prepared coding challenge.
+- code: ask for exactly one small standalone function (for example, “Write a Python function that ...”) OR one SQL query. Never ask for a class, a data structure API, multiple functions, or a multi-part implementation. A SQL query may be moderately complex, but keep it to one query and one clear goal. Assess coding knowledge through the submitted implementation; do not bundle a verbal explanation or system-design discussion into this task. The candidate will receive a typing pad and submit button.
 
 Generate exactly ONE natural spoken question. Avoid repetition and do not provide explanations, scoring, feedback, hints, or multiple questions. Then select exactly ONE panel member whose role, expertise, seniority, and evaluation responsibility best match the question. The name MUST be copied exactly from the supplied panel.
 
@@ -85,7 +109,7 @@ Return ONLY valid JSON. No markdown or explanation.
 For CONCLUDE:
 {{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
 For CONTINUE:
-{{"status":"continue","question_domain":"clarification|project|area|repo_assessment","generated_question":"...","panel":"Exact Panel Member Name"}}
+{{"status":"continue","question_domain":"clarification|project|area|repo_assessment|code","generated_question":"...","panel":"Exact Panel Member Name"}}
 For DRAW:
 {{"status":"continue","question_domain":"draw","generated_question":"...","panel":"Exact Panel Member Name"}}
 The status must be exactly lowercase continue or conclude."""
@@ -109,13 +133,13 @@ Candidate's latest response: {last_candidate_response}
 
 Choose CONTINUE only when the candidate has demonstrated strong, meaningful performance and another question can produce valuable evidence. Choose CONCLUDE when performance does not justify extending the interview. Do not continue simply because an area remains uncovered.
 
-If continuing, choose exactly one domain: clarification, project, or area. Generate exactly ONE difficult, production-grade spoken question. Prefer depth involving architecture, failure modes, scalability, observability, consistency, security, recovery, deployment, or trade-offs. Do not ask multiple questions or invent project details. Select exactly ONE supplied panel member who best matches the topic.
+If continuing, choose exactly one domain: clarification, project, area, or code. Choose code when the candidate should write exactly one small standalone function or one SQL query in the typing pad. Never request a class, a data structure API, multiple functions, or a multi-part implementation. A SQL task can be moderately complex, but must be one query with one clear goal. Assess coding knowledge through the submitted code itself; do not add a verbal explanation or system-design discussion. Ask them to write and submit it. For non-code domains, generate exactly ONE difficult, production-grade question. Prefer depth involving architecture, failure modes, scalability, observability, consistency, security, recovery, deployment, or trade-offs. Do not ask multiple questions or invent project details. Select exactly ONE supplied panel member who best matches the topic.
 
 Return ONLY valid JSON. No markdown or explanation.
 For CONCLUDE:
 {{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
 For CONTINUE:
-{{"status":"continue","question_domain":"clarification|project|area","generated_question":"...","panel":"Exact Panel Member Name"}}
+{{"status":"continue","question_domain":"clarification|project|area|code","generated_question":"...","panel":"Exact Panel Member Name"}}
 The status must be exactly lowercase continue or conclude."""
 
 
@@ -137,13 +161,13 @@ Elapsed interview time: {elapsed_time}
 
 Choose CONCLUDE unless the candidate has demonstrated exceptional performance that genuinely justifies one last high-value question. Do not choose CONTINUE merely because an area remains uncovered.
 
-If continuing, generate exactly ONE comprehensive, high-complexity, evidence-producing question. Address the candidate directly using “you” and “your”. Synthesize relevant architecture, scalability, reliability, security, business impact, operational risk, prioritization, and high-stakes trade-offs. Do not include a preamble, answer, hints, scoring, feedback, or a second question. Select exactly ONE supplied panel member with the most relevant seniority and expertise.
+If continuing, generate exactly ONE comprehensive, high-complexity, evidence-producing question. Choose question_domain "code" only when a short coding task is the best evidence; otherwise use "final". A code task must request exactly one small standalone function or one SQL query. Never request a class, a data structure API, multiple functions, or a multi-part implementation. One SQL query may be moderately complex, but must have one clear goal. Assess coding knowledge from the submitted code itself; do not add a verbal explanation or system-design discussion. For final questions, address the candidate directly using “you” and “your” and synthesize relevant architecture, reliability, security, business impact, and trade-offs. Do not include a preamble, answer, hints, scoring, feedback, or a second question. Select exactly ONE supplied panel member with the most relevant seniority and expertise.
 
 Return ONLY valid JSON. No markdown or explanation.
 For CONCLUDE:
 {{"status":"conclude","question_domain":null,"generated_question":null,"panel":null}}
 For the ONE FINAL QUESTION:
-{{"status":"continue","question_domain":"final","generated_question":"...","panel":"Exact Panel Member Name"}}
+{{"status":"continue","question_domain":"final|code","generated_question":"...","panel":"Exact Panel Member Name"}}
 The status must be exactly lowercase continue or conclude."""
 
 
@@ -174,11 +198,25 @@ Candidate profile:
 Interview question and answer history:
 {question_answer_history}
 
-Provide a strict, evidence-based evaluation. Do not invent candidate experience or skills. Return ONLY valid JSON with scores from 0-100 using this structure:
+Candidate's own repository contribution, extracted from their opening project answers:
+{repository_contribution}
+
+Repository coding challenge result (may be null if no challenge was completed):
+{repository_assessment}
+
+Provide a strict, evidence-based evaluation of the complete interview. Do not invent candidate experience or skills. Use the candidate's stated role and implementation scope as evidence of ownership: a clearly small/limited contribution should receive a lower project_contribution_score than substantial end-to-end ownership, and vague claims should not be treated as major ownership. Use the repository evaluator's tests as authoritative: if correctness is "correct", repository_challenge_score MUST be 100; if "incorrect", it MUST be 0; if "unverified", use 50; if "not_completed", use 0 and do not penalize the overall score for missing challenge evidence. When correctness is established, compare the candidate's implementation with the reference: better_approach is a modest positive signal, same_approach is neutral, and lower_grade_approach is a modest maintainability concern. Do not claim an approach comparison when correctness is unverified. Evaluate answer_quality_score from the actual interview answers' correctness, relevance, completeness, reasoning, specificity, and clarity. Reward accurate, well-supported answers; identify errors, gaps, unsupported claims, and unclear explanations. Do not reward length by itself, and account for the role's seniority.
+
+Use these overall weights when a repository result exists: interview evidence (35%; average job_role_match, skills_match, technical_score, problem_solving_score, experience_match, and answer_quality_score), demonstrated project contribution (25%), repository_challenge_score (25%), and communication_score (15%). When the challenge was not completed, redistribute its 25% to interview evidence (60%) and do not penalize the candidate for its absence. After calculating the weighted score, apply only a small approach adjustment: +2 points for better_approach, 0 for same_approach, same_grade_different_approach, or not_evaluated, and -2 for lower_grade_approach. Clamp the final score to 0-100. Keep technical_score, problem_solving_score, experience_match, and answer_quality_score consistent with the transcript evidence.
+
+Return ONLY valid JSON with scores from 0-100 using this structure:
 {{
   "overall_match_percentage": 0, "job_role_match": 0, "skills_match": 0,
   "experience_match": 0, "qualification_match": 0, "technical_score": 0,
-  "communication_score": 0, "problem_solving_score": 0, "language_skills": [],
+  "communication_score": 0, "problem_solving_score": 0, "answer_quality_score": 0,
+  "project_contribution_score": 0, "repository_challenge_score": 0,
+  "code_correctness": "correct|incorrect|unverified|not_completed",
+  "approach_comparison": "better_approach|same_approach|same_grade_different_approach|lower_grade_approach|not_evaluated",
+  "language_skills": [],
   "basic_insights": [], "strengths": [], "concerns": [], "hire_reasons": [],
   "reject_reasons": [], "final_recommendation": "Strong Hire"
 }}
