@@ -538,25 +538,24 @@ class InterviewController:
             if action.get("action") == "ASK_QUESTION":
                 state["final_question_asked"] = True
 
+        # A ready repository challenge is part of this interview. Never let a
+        # stage decision (including the forced post-final-question conclusion)
+        # skip it if it has not already been started or completed.
+        if (
+            action.get("action") == "CONCLUDE"
+            and not state.get("repository_assessment_started")
+            and not state.get("repository_assessment_completed")
+            and self._repository_assessment_ready(state)
+        ):
+            action = self._repository_assessment_action(state) or action
+            if action.get("action") == "START_REPO_ASSESSMENT":
+                logger.info("Starting prepared repository assessment before concluding interview %s", interview_id)
+
         # ====================================================================
         # ACTION DISPATCH: CONCLUDE vs NEXT QUESTION
         # ====================================================================
         if action.get("action") == "START_REPO_ASSESSMENT":
-            # The five-minute coding task is part of the interview clock.
-            # Do not freeze elapsed time while the editor is open.
-            state.pop("interview_timer_paused_at", None)
-            state["repository_evaluation"] = {**(state.get("repository_evaluation") or {}), "status": "ready"}
-            state["repository_assessment_started"] = True
-            state["current_question"] = action
-            state["interview_phase"] = "normal"
-            self._save_state(state)
-            member_details = action.get("panel_member_details") or {}
-            self._broadcast(interview_id, "speaker_changed", {
-                "panel_member": action.get("panel_member"), "question": action.get("question"),
-                "question_pattern": action.get("question_pattern"), "selected_area": "repo_assessment",
-                "question_kind": "repo_assessment", "gender": member_details.get("gender", "Female"),
-                "panel_member_details": member_details,
-            })
+            self._dispatch_repository_assessment(interview_id, state, action)
         elif action.get("action") == "CONCLUDE":
             state["stage"] = CONCLUDING
             state["interview_phase"] = "concluding"
@@ -617,6 +616,52 @@ class InterviewController:
         except Exception:
             return False
 
+    @staticmethod
+    def _repository_assessment_action(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        panel = state.get("panel") or {}
+        members = [member for member in panel.values() if isinstance(member, dict) and member.get("name")]
+        if not members:
+            return None
+        member = next(
+            (m for m in members if any(
+                keyword in str(m.get("role", "")).casefold()
+                for keyword in ("technical", "engineer", "developer", "software")
+            )),
+            members[0],
+        )
+        question = (
+            "Your repository coding challenge is ready. Open the code editor, read problem.md, "
+            "fix the introduced regression, and submit your change. The original repository will not be modified."
+        )
+        return {
+            "action": "START_REPO_ASSESSMENT",
+            "panel_member": member["name"],
+            "panel_member_details": member,
+            "question": question,
+            "question_pattern": "Introduce the prepared repository bug-fix assessment.",
+            "selected_area": "repo_assessment",
+            "stage": NORMAL,
+            "question_kind": "repo_assessment",
+        }
+
+    def _dispatch_repository_assessment(self, interview_id: str, state: Dict[str, Any], action: Dict[str, Any]) -> None:
+        # The five-minute coding task is part of the interview clock.
+        state.pop("interview_timer_paused_at", None)
+        state["stage"] = NORMAL
+        state["repository_evaluation"] = {**(state.get("repository_evaluation") or {}), "status": "ready"}
+        state["repository_assessment_started"] = True
+        state["current_question"] = action
+        state["interview_phase"] = "normal"
+        self._save_state(state)
+        member_details = action.get("panel_member_details") or {}
+        self._broadcast(interview_id, "speaker_changed", {
+            "panel_member": action.get("panel_member"), "question": action.get("question"),
+            "question_pattern": action.get("question_pattern"), "selected_area": "repo_assessment",
+            "question_kind": "repo_assessment", "gender": member_details.get("gender", "Female"),
+            "panel_member_details": member_details,
+        })
+        self._broadcast(interview_id, "stage_changed", {"stage": NORMAL})
+
     # ========================================================================
     # CLOSING FINISHED GATE -> REPORT GENERATION
     # ========================================================================
@@ -629,6 +674,16 @@ class InterviewController:
         state = self._get_state(interview_id)
         if state.get("stage") == COMPLETED and state.get("report"):
             return self._public(state)
+
+        if (
+            not state.get("repository_assessment_started")
+            and not state.get("repository_assessment_completed")
+            and self._repository_assessment_ready(state)
+        ):
+            action = self._repository_assessment_action(state)
+            if action:
+                self._dispatch_repository_assessment(interview_id, state, action)
+                return {**self._public(state), **action}
 
         state["stage"] = CONCLUDING
         state["interview_phase"] = "concluding"

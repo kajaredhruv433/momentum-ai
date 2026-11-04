@@ -190,7 +190,7 @@ export default function VoiceControls({
                   ? 'Interruption and STT are paused while muted.'
                   : isInterviewerSpeaking
                   ? '⚡ Interrupts instantly when you speak words (immune to wind/noise/echo).'
-                  : 'Hands-free turn-taking: pause 3s after speaking to auto-submit.'}
+                  : 'Hands-free turn-taking: pause briefly to auto-submit.'}
               </span>
             </div>
           </div>
@@ -302,7 +302,7 @@ export default function VoiceControls({
                 </span>
               ) : (
                 <span style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
-                  ✓ Listening... (Pause 2-3s to submit)
+                  ✓ Listening... (Pause briefly to submit)
                 </span>
               )}
             </div>

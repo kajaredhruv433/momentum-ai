@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 
 try:
     from .prompts import EXTENDED_STAGE_PROMPT
-    from .stage_utils import as_json, clean_text, panel_names, prompt_text, repair_json
+    from .stage_utils import as_json, clean_text, history_for_prompt, panel_names, prompt_text, repair_json
 except ImportError:
     from prompts import EXTENDED_STAGE_PROMPT
-    from stage_utils import as_json, clean_text, panel_names, prompt_text, repair_json
+    from stage_utils import as_json, clean_text, history_for_prompt, panel_names, prompt_text, repair_json
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,13 @@ def next_extended_action(history: List[Dict[str, Any]], answer: str, profile: Di
         company_requirements=as_json(profile.get("company_requirements") or profile.get("company_details") or {}),
         candidate_profile=as_json(profile), projects=as_json(profile.get("projects") or []),
         areas_to_cover=as_json(areas_to_cover), covered_areas=as_json([]), panels=as_json(panel),
-        base_time=base_time, elapsed_time=elapsed_time, question_answer_history=as_json(history),
+        base_time=base_time, elapsed_time=elapsed_time, question_answer_history=as_json(history_for_prompt(history)),
         last_candidate_response=answer,
     )
     try:
-        result = repair_json(prompt_text(prompt, retries=1))
+        result = repair_json(prompt_text(
+            prompt, retries=0, max_output_tokens=600, timeout_seconds=20, retry_empty=False,
+        ))
         if not isinstance(result, dict) or str(result.get("status", "")).lower() == "conclude":
             return {"action": "CONCLUDE"}
         status = str(result.get("status", "")).lower()
@@ -36,6 +38,25 @@ def next_extended_action(history: List[Dict[str, Any]], answer: str, profile: Di
             raise ValueError(f"invalid response: {result}")
     except Exception as exc:
         logger.warning("EXTENDED single-call response invalid: %s", exc)
+        members = [member for member in panel.values() if isinstance(member, dict) and member.get("name")]
+        member = next(
+            (m for m in members if any(
+                keyword in str(m.get("role", "")).casefold()
+                for keyword in ("technical", "engineer", "developer", "software")
+            )),
+            members[0] if members else None,
+        )
+        if member:
+            question = (
+                "Describe a difficult production engineering trade-off you faced, the alternatives you considered, "
+                "and how you measured the outcome."
+            )
+            return {
+                "action": "ASK_QUESTION", "panel_member": member["name"],
+                "panel_member_details": member, "question": question,
+                "question_pattern": question, "selected_area": "project", "stage": "EXTENDED",
+                "question_kind": "project",
+            }
         return {"action": "CONCLUDE"}
     details = next((m for m in panel.values() if isinstance(m, dict) and m.get("name") == member), None)
     return {"action": "ASK_QUESTION", "panel_member": member, "panel_member_details": details,

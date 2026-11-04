@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 
 try:
     from .prompts import NORMAL_STAGE_PROMPT
-    from .stage_utils import as_json, clean_text, panel_names, prompt_text, repair_json
+    from .stage_utils import as_json, clean_text, history_for_prompt, panel_names, prompt_text, repair_json
 except ImportError:
     from prompts import NORMAL_STAGE_PROMPT
-    from stage_utils import as_json, clean_text, panel_names, prompt_text, repair_json
+    from stage_utils import as_json, clean_text, history_for_prompt, panel_names, prompt_text, repair_json
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,7 @@ def next_normal_action(history: List[Dict[str, Any]], answer: str, profile: Dict
         company_requirements=as_json(profile.get("company_requirements") or profile.get("company_details") or {}),
         candidate_profile=as_json(profile), projects=as_json(profile.get("projects") or []),
         areas_to_cover=as_json(areas_to_cover), covered_areas=as_json(covered_areas), panels=as_json(panel),
-        question_answer_history=as_json([
-            {**item, "candidate_answer": item.get("candidate_answer_for_prompt", item.get("candidate_answer", ""))}
-            for item in history
-        ]),
+        question_answer_history=as_json(history_for_prompt(history)),
         last_candidate_response=(history[-1].get("candidate_answer_for_prompt", answer) if history else answer),
         repo_assessment_option=(
             'The repository evaluator is READY. You may choose question_domain "repo_assessment" as the fourth interview option to invite the candidate into the prepared temporary coding editor.'
@@ -35,7 +32,9 @@ def next_normal_action(history: List[Dict[str, Any]], answer: str, profile: Dict
         ),
     )
     try:
-        result = repair_json(prompt_text(prompt, retries=1))
+        result = repair_json(prompt_text(
+            prompt, retries=0, max_output_tokens=600, timeout_seconds=20, retry_empty=False,
+        ))
         if not isinstance(result, dict):
             raise ValueError("response is not an object")
         status = str(result.get("status", "")).lower()
@@ -65,6 +64,24 @@ def next_normal_action(history: List[Dict[str, Any]], answer: str, profile: Dict
             raise ValueError(f"invalid response: {result}")
     except Exception as exc:
         logger.warning("NORMAL single-call response invalid: %s", exc)
+        members = [member for member in panel.values() if isinstance(member, dict) and member.get("name")]
+        member = next(
+            (m for m in members if any(
+                keyword in str(m.get("role", "")).casefold()
+                for keyword in ("technical", "engineer", "developer", "software")
+            )),
+            members[0] if members else None,
+        )
+        if member:
+            uncovered = next((area for area in areas_to_cover if area not in covered_areas), None)
+            area = str(uncovered or "a core skill for this role")
+            question = f"What is one key consideration when working with {area}, and why?"
+            return {
+                "action": "ASK_QUESTION", "panel_member": member["name"],
+                "panel_member_details": member, "question": question,
+                "question_pattern": question, "selected_area": area, "stage": "NORMAL",
+                "question_kind": "area",
+            }
         return {"action": "CONCLUDE"}
     return {"action": "ASK_QUESTION", "panel_member": member, "panel_member_details": _member(panel, member),
             "question": question, "question_pattern": question, "selected_area": domain, "stage": "NORMAL",

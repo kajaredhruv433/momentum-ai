@@ -1,4 +1,6 @@
 /** Browser microphone + ElevenLabs audio client. Provider calls stay server-side. */
+const TURN_END_SILENCE_MS = 1200;
+
 export class ElevenLabsVoiceService {
   constructor() {
     this.audioContext = null; this.stream = null; this.processor = null; this.socket = null;
@@ -91,18 +93,18 @@ export class ElevenLabsVoiceService {
     clearTimeout(this.silenceTimer);
     this.silenceTimer = setTimeout(() => {
       const silenceMs = Date.now() - this.lastVoiceActivityAt;
-      if (silenceMs < 3000) {
-        this.silenceTimer = setTimeout(() => this._commitAfterSilence(), 3000 - silenceMs);
+      if (silenceMs < TURN_END_SILENCE_MS) {
+        this.silenceTimer = setTimeout(() => this._commitAfterSilence(), TURN_END_SILENCE_MS - silenceMs);
         return;
       }
       this._commitAfterSilence();
-    }, 3000);
+    }, TURN_END_SILENCE_MS);
   }
   _commitAfterSilence() {
     if (!this.speechStarted || this.commitRequested || this.muted || !this.listening) return;
     const silenceMs = Date.now() - this.lastVoiceActivityAt;
-    if (silenceMs < 3000) {
-      this.silenceTimer = setTimeout(() => this._commitAfterSilence(), 3000 - silenceMs);
+    if (silenceMs < TURN_END_SILENCE_MS) {
+      this.silenceTimer = setTimeout(() => this._commitAfterSilence(), TURN_END_SILENCE_MS - silenceMs);
       return;
     }
     if (this.socket?.readyState === WebSocket.OPEN) {
