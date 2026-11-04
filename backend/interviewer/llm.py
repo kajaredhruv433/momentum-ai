@@ -104,12 +104,7 @@ def _routed_chat_completion(messages, token_limit: int, timeout_seconds: Optiona
         return _chat_completion(baseten_client, baseten_model, messages, token_limit, "BASETEN", timeout_seconds), "BASETEN"
 
 
-def ask_llm(
-    prompt: str,
-    max_output_tokens: Optional[int] = None,
-    timeout_seconds: Optional[float] = None,
-    retry_empty: bool = True,
-) -> str:
+def ask_llm(prompt: str, max_output_tokens: Optional[int] = None, timeout_seconds: Optional[float] = None) -> str:
     """Generate text through the configured interview model routing."""
     if not isinstance(prompt, str):
         raise TypeError("prompt must be a string")
@@ -123,12 +118,6 @@ def ask_llm(
     response, provider = _routed_chat_completion(messages, token_limit, timeout_seconds)
     content = _response_text(response)
     if not content:
-        if not retry_empty:
-            choice = response.choices[0] if response.choices else None
-            finish_reason = choice.finish_reason if choice else "no_choices"
-            raise RuntimeError(
-                f"{provider} returned no answer text (finish_reason={finish_reason}, provider={provider})."
-            )
         # A reasoning model may spend the entire completion budget thinking.
         # Retry once with a short-answer instruction and a larger answer budget.
         retry_messages = messages + [{

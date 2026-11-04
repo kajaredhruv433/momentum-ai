@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { readApiJson } from "@/lib/api-response";
 
 interface ProblemsClientProps {
   initialProblems: Problem[];
@@ -50,7 +51,7 @@ export default function ProblemsClient({
       try {
         const res = await fetch("/api/submissions");
         if (res.ok) {
-          const submissions = await res.json();
+          const submissions = await readApiJson(res);
           // Get unique problem IDs where status is Accepted
           const solvedIds = new Set<string>(
             submissions
@@ -100,14 +101,10 @@ export default function ProblemsClient({
       console.log("📡 API Response Status:", res.status, res.statusText);
 
       if (!res.ok) {
-        const errorData = await res.json();
-        console.error("❌ API Error Response:", errorData);
-        throw new Error(
-          errorData.error || errorData.details || "Failed to generate problem",
-        );
+        await readApiJson(res);
       }
 
-      const data = await res.json();
+      const data = await readApiJson(res);
       console.log("✅ API Response:", data);
 
       if (data.problems && Array.isArray(data.problems)) {

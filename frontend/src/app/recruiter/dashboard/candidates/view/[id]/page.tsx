@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useState, useEffect } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -21,7 +23,7 @@ export default function CandidateViewPage() {
         const fetchCandidate = async () => {
             try {
                 const response = await fetch(`/api/applications/${params.id}`);
-                const data = await response.json();
+                const data = await readApiJson(response);
                 setCandidate(data);
             } catch (error) {
                 console.error("Error fetching candidate:", error);

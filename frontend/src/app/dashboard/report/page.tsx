@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Calendar, Download, Zap, TrendingUp, Clock, Target, Award, BrainCircuit } from "lucide-react"
@@ -51,17 +53,17 @@ export default function ReportPage() {
                 try {
                     const subRes = await fetch(`/api/submissions?userId=${user.uid}`)
                     if (subRes.ok) {
-                        const data = await subRes.json()
+                        const data = await readApiJson(subRes)
                         setSubmissions(data)
                     }
                     const intRes = await fetch(`/api/candidate/interviews?applicantUid=${user.uid}&applicantEmail=${encodeURIComponent(user.email || "")}`)
                     if (intRes.ok) {
-                        const intData = await intRes.json()
+                        const intData = await readApiJson(intRes)
                         setInterviews(intData.completed || [])
                     }
                     const resumeRes = await fetch(`/api/resume?email=${encodeURIComponent(user.email || "")}`)
                     if (resumeRes.ok) {
-                        const rData = await resumeRes.json()
+                        const rData = await readApiJson(resumeRes)
                         if (rData.data?.analysis?.score) {
                             setResumeScore(rData.data.analysis.score)
                         }

@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
@@ -56,7 +58,7 @@ export default function LoginPage() {
                     })
 
                     if (res.ok) {
-                        const data = await res.json()
+                        const data = await readApiJson(res)
                         const dbRole = data.role
                         if (dbRole === "recruiter") {
                             localStorage.setItem("momentum_role", "recruiter")
@@ -111,7 +113,7 @@ export default function LoginPage() {
             })
 
             if (res.ok) {
-                const data = await res.json()
+                const data = await readApiJson(res)
                 const dbRole = data.role
                 if (dbRole === "recruiter") {
                     localStorage.setItem("momentum_role", "recruiter")
@@ -155,7 +157,7 @@ export default function LoginPage() {
             })
 
             if (resCheck.ok) {
-                const data = await resCheck.json()
+                const data = await readApiJson(resCheck)
                 // If user is already registered as recruiter
                 if (data.role === "recruiter") {
                     localStorage.setItem("momentum_role", "recruiter")
@@ -250,7 +252,7 @@ export default function LoginPage() {
             })
 
             if (!res.ok) {
-                const errData = await res.json()
+                const errData = await readApiJson(res)
                 throw new Error(errData.detail || errData.message || "Failed to save company name.")
             }
 

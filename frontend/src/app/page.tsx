@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
@@ -56,7 +58,7 @@ export default function LandingPage() {
             body: JSON.stringify({ uid: user.uid }),
           })
           if (res.ok) {
-            const data = await res.json()
+            const data = await readApiJson(res)
             const r = data.role || "user"
             localStorage.setItem("momentum_role", r)
             localStorage.setItem("momentum_user_id", user.uid)

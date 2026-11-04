@@ -157,25 +157,25 @@ def create_workspace(assessment_id, files, language, oracle=None, runtime_versio
     # The name makes remote workspace recovery possible after an API restart.
     # Daytona's wall-clock TTL is the final backstop if this API process exits
     # before its expiry sweeper can delete the assessment sandbox.
-    # process.exec requires /usr/bin/bash. Ubuntu 24.04 includes it in the
-    # base image; language-specific tools are installed after the sandbox is
-    # live, avoiding the custom-image build path that omitted Bash here.
+    # Use official full language images so Bash, Git, curl, and the selected
+    # Node runtime are present at boot; ordinary repositories avoid apt setup.
     # The organization has a 10 GiB *aggregate* memory quota. Existing active
     # assessment sandboxes count against it, so a per-sandbox 8 GiB request
     # can be rejected before setup starts. Prefer the requested shape and
     # reduce it only when Daytona explicitly reports an aggregate quota error.
+    image = "node:22-bookworm" if language == "node" else "python:3.12-bookworm"
     resource_shapes = [(4, 8, 10), (4, 4, 10), (4, 2, 10), (2, 1, 10)]
     sb = None
     last_resource_error = None
     for index, (cpu, memory, disk) in enumerate(resource_shapes):
         params = CreateSandboxFromImageParams(
-            image="ubuntu:24.04",
+            image=image,
             name=aid,
             resources=Resources(cpu=cpu, memory=memory, disk=disk),
             auto_stop_interval=0,
             ttl_minutes=max(10, settings.assessment_minutes + 40),
         )
-        progress(f"Starting an Ubuntu 24.04 Daytona sandbox ({cpu} CPU, {memory} GiB RAM, {disk} GiB disk)…")
+        progress(f"Starting the {image} Daytona sandbox ({cpu} CPU, {memory} GiB RAM, {disk} GiB disk)…")
         try:
             sb = _daytona().create(params, timeout=300)
             break
@@ -192,8 +192,11 @@ def create_workspace(assessment_id, files, language, oracle=None, runtime_versio
         raise RuntimeError(f"Daytona memory quota is full; sandbox could not be started even at the minimum resource shape: {str(last_resource_error)[:500]}")
     _cache[aid] = sb
     try:
-        progress("Daytona sandbox is running. Checking Git, Git LFS, and the project runtime…")
-        packages = ["ca-certificates", "git", "git-lfs"]
+        progress("Daytona sandbox is running. Checking repository tools and project runtime…")
+        needs_lfs = bool(clone and clone.get("lfs"))
+        packages = ["ca-certificates", "git"]
+        if needs_lfs:
+            packages.append("git-lfs")
         if language == "node":
             packages += ["curl", "nodejs", "npm"]
         else:
@@ -201,18 +204,36 @@ def create_workspace(assessment_id, files, language, oracle=None, runtime_versio
             # system python can differ and must never silently pick the runtime.
             packages += ["curl"]
         package_list = " ".join(shlex.quote(package) for package in packages)
-        install = (
-            "set -eu; export DEBIAN_FRONTEND=noninteractive; "
-            "if ! command -v git >/dev/null 2>&1 || ! command -v git-lfs >/dev/null 2>&1"
-            + (" || ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1" if language == "node" else " || ! command -v curl >/dev/null 2>&1")
-            + "; then "
-            "apt-get update -o Acquire::Retries=0 -o Acquire::http::Timeout=12 -o Acquire::https::Timeout=12 "
-            "-o Dpkg::Use-Pty=0 && apt-get install -y --no-install-recommends "
-            "-o Acquire::Retries=0 -o Acquire::http::Timeout=12 -o Acquire::https::Timeout=12 "
-            "-o Dpkg::Use-Pty=0 " + package_list + "; fi; "
-            "test -x /usr/bin/bash && git --version && git-lfs version"
-        )
-        _exec_with_live_logs(sb, install, progress_callback, timeout=180)
+        tools_check = "command -v git >/dev/null 2>&1"
+        if needs_lfs:
+            tools_check += " && command -v git-lfs >/dev/null 2>&1"
+        tools_check += " && command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1" if language == "node" else " && command -v curl >/dev/null 2>&1"
+        needs_install = _exec(sb, tools_check, 15, check=False).returncode != 0
+        if needs_install:
+            progress("Updating package indexes for missing repository tools (60-second limit)…")
+            update_packages = (
+                "set -eu; export DEBIAN_FRONTEND=noninteractive; "
+                "timeout --signal=TERM --kill-after=5 60s apt-get update "
+                "-o Acquire::Retries=0 -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 "
+                "-o Dpkg::Use-Pty=0"
+            )
+            _exec_with_live_logs(sb, update_packages, progress_callback, timeout=75)
+            progress("Installing missing repository tools (60-second limit)…")
+            install_packages = (
+                "set -eu; export DEBIAN_FRONTEND=noninteractive; "
+                "timeout --signal=TERM --kill-after=5 60s apt-get install -y --no-install-recommends "
+                "-o Acquire::Retries=0 -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 "
+                "-o Dpkg::Use-Pty=0 " + package_list
+            )
+            _exec_with_live_logs(sb, install_packages, progress_callback, timeout=75)
+        verify_tools = "test -x /usr/bin/bash && git --version"
+        if needs_lfs:
+            verify_tools += " && git-lfs version"
+        if language == "node":
+            verify_tools += " && node --version && npm --version"
+        else:
+            verify_tools += " && curl --version"
+        _exec(sb, verify_tools, 30)
         if language == "python":
             requested = str(runtime_version or "3.9").strip()
             match = re.search(r"(?<!\d)(3\.\d{1,2}(?:\.\d{1,2})?)(?!\d)", requested)
@@ -236,7 +257,8 @@ def create_workspace(assessment_id, files, language, oracle=None, runtime_versio
                 raise ValueError("A valid repository, pinned commit, and GitHub access token are required")
             branch = clone.get("branch", "")
             url = f"https://x-access-token:{token}@github.com/{repo}.git"
-            _exec(sb, "git lfs install --system", 30)
+            if needs_lfs:
+                _exec(sb, "git lfs install --system", 30)
             progress(f"Git is ready. Fetching {repo} at pinned commit {commit[:12]}…")
             # Fetch the pinned SHA directly. A shallow clone of a branch tip
             # can omit the requested commit when the branch has advanced.
@@ -244,8 +266,9 @@ def create_workspace(assessment_id, files, language, oracle=None, runtime_versio
                 "set -eu; mkdir -p /workspace; cd /workspace; git init -q; "
                 f"git remote add origin {shlex.quote(url)}; "
                 f"git fetch --depth 1 origin {shlex.quote(commit)}; "
-                "git checkout --quiet --detach FETCH_HEAD; git lfs pull; "
-                f"git remote set-url origin https://github.com/{shlex.quote(repo)}.git"
+                "git checkout --quiet --detach FETCH_HEAD; "
+                + ("git lfs pull; " if needs_lfs else "")
+                + f"git remote set-url origin https://github.com/{shlex.quote(repo)}.git"
             )
             _exec(sb, script, 900)
             head = _exec(sb, "git -C /workspace rev-parse HEAD", 30).stdout.decode().strip().lower()
@@ -286,6 +309,13 @@ def write_file(uri, path, content):
     p = _path(path); sb = _sandbox(uri)
     _exec(sb, f"mkdir -p {shlex.quote('/workspace/'+p.parent.as_posix())} && test ! -L {shlex.quote('/workspace/'+p.as_posix())}", 30)
     sb.fs.upload_file(content if isinstance(content, bytes) else content.encode(), '/workspace/'+p.as_posix())
+
+def write_oracle(uri, oracle):
+    """Write private challenge reference data after workspace creation."""
+    sb = _sandbox(uri)
+    _exec(sb, "mkdir -p /workspace/.momentum-reference && chmod 700 /workspace/.momentum-reference", 30)
+    sb.fs.upload_file(json.dumps(oracle, ensure_ascii=False).encode(), "/workspace/.momentum-reference/oracle.json")
+    _exec(sb, "chmod 600 /workspace/.momentum-reference/oracle.json", 30)
 
 def read_oracle(uri):
     try: value=json.loads(_sandbox(uri).fs.download_file('/workspace/.momentum-reference/oracle.json').decode())

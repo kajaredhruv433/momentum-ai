@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Input } from "@/components/ui/input"
 
 import { auth } from '@/lib/firebase';
+import { readApiJson } from "@/lib/api-response";
 import { onAuthStateChanged } from "firebase/auth";
 
 export default function MyJobsPage() {
@@ -22,7 +23,7 @@ export default function MyJobsPage() {
             try {
                 // Fetch all jobs first to debug visibility
                 const res = await fetch(`/api/jobs`)
-                const data = await res.json()
+                const data = await readApiJson(res)
 
                 // Filter locally to ensure exact match
                 const myJobs = data.filter((job: any) => job.recruiterUid === uid);

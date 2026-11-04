@@ -20,6 +20,7 @@ import { Problem } from "@/lib/problems";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { readApiJson } from "@/lib/api-response";
 
 interface ProblemWorkspaceClientProps {
   problem: Problem;
@@ -46,7 +47,7 @@ function SolutionTab({
           `/api/solution?problemId=${problemId}&language=${language}`,
         );
         if (res.ok) {
-          const data = await res.json();
+          const data = await readApiJson(res);
           setSolution(data.solution);
         } else {
           throw new Error("Failed to fetch solution");
@@ -118,7 +119,7 @@ export default function ProblemWorkspaceClient({
       try {
         const res = await fetch(`/api/submissions?problemId=${problem.id}`);
         if (res.ok) {
-          const data = await res.json();
+          const data = await readApiJson(res);
           setSubmissions(data);
           if (data.length > 0) {
             setHasSubmitted(true);
@@ -157,7 +158,7 @@ export default function ProblemWorkspaceClient({
           }),
         });
 
-        const data = await res.json();
+        const data = await readApiJson(res);
         setEvaluation(data);
 
         // Refresh submissions list to show the new submission
@@ -165,7 +166,7 @@ export default function ProblemWorkspaceClient({
           `/api/submissions?problemId=${problem.id}`,
         );
         if (submissionsRes.ok) {
-          const submissionsData = await submissionsRes.json();
+          const submissionsData = await readApiJson(submissionsRes);
           setSubmissions(submissionsData);
           setHasSubmitted(true);
           setActiveDescTab("submissions");
@@ -183,7 +184,7 @@ export default function ProblemWorkspaceClient({
           }),
         });
 
-        const data = await res.json();
+        const data = await readApiJson(res);
 
         if (data.error) {
           let errorMessage = data.error;
@@ -238,7 +239,7 @@ export default function ProblemWorkspaceClient({
         }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
 
       if (data.error) {
         let errorMessage = data.error;
@@ -302,7 +303,7 @@ export default function ProblemWorkspaceClient({
           `/api/submissions?problemId=${problem.id}`,
         );
         if (submissionsRes.ok) {
-          const submissionsData = await submissionsRes.json();
+          const submissionsData = await readApiJson(submissionsRes);
           setSubmissions(submissionsData);
           setHasSubmitted(true);
           setActiveDescTab("submissions");

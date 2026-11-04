@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -39,7 +41,7 @@ export default function CandidatesPage() {
                 })
 
                 if (interviewedRes.ok) {
-                    const interviewed = await interviewedRes.json()
+                    const interviewed = await readApiJson(interviewedRes)
                     setInterviewedCandidates(interviewed)
                 }
 
@@ -51,7 +53,7 @@ export default function CandidatesPage() {
                 })
 
                 if (applicantsRes.ok) {
-                    const applicants = await applicantsRes.json()
+                    const applicants = await readApiJson(applicantsRes)
                     setAllApplicants(applicants)
                 }
             } catch (error) {
@@ -136,7 +138,7 @@ export default function CandidatesPage() {
                 setHiredMessage(`Successfully hired ${candidate.name}! 🎉`)
                 setTimeout(() => setHiredMessage(null), 5000)
             } else {
-                const err = await res.json()
+                const err = await readApiJson(res)
                 alert(err.detail || "Failed to hire candidate")
             }
         } catch (e) {
@@ -163,7 +165,7 @@ export default function CandidatesPage() {
             })
 
             if (res.ok) {
-                const data = await res.json()
+                const data = await readApiJson(res)
                 const idSet = new Set(appIds)
                 setInterviewedCandidates(prev => prev.map(c => 
                     idSet.has(c.applicationId) || idSet.has(c.id) ? { ...c, isHired: true, status: 'Hired' } : c
@@ -175,7 +177,7 @@ export default function CandidatesPage() {
                 setHiredMessage(label || `Successfully hired ${data.hiredCount || appIds.length} candidate(s)! 🎉`)
                 setTimeout(() => setHiredMessage(null), 5000)
             } else {
-                const err = await res.json()
+                const err = await readApiJson(res)
                 alert(err.detail || "Failed to batch hire candidates")
             }
         } catch (e) {

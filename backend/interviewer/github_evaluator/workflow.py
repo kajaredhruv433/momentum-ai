@@ -11,6 +11,7 @@ from .store import connect, json_dump
 from .knowledge import index_repository, repository_id
 from .mongo_store import database as mongo_database
 from .challenge import prepare_verified_challenge, generate_image_fixture
+from .runtime import resolve_python_version
 from . import daytona_workspace as container_workspace
 
 
@@ -231,14 +232,81 @@ async def index_snapshot(s: State):
 
 async def prepare(s:State):
     knowledge=s['knowledge']
-    db=connect(); db.execute("UPDATE assessments SET status='preparing',progress='Using the indexed repository and candidate claims to choose one matching function' WHERE id=?",(s['assessment_id'],)); db.commit(); db.close()
     challenge = None
     challenge_error = None
+    db=connect(); db.execute(
+        "UPDATE assessments SET status='preparing',progress='Preparing the temporary repository workspace before generating the challenge' WHERE id=?",
+        (s['assessment_id'],),
+    ); db.commit(); db.close()
+
+    def report_workspace_progress(message):
+        if isinstance(message, dict):
+            log_tail = str(message.get('log', '')).strip()[-1400:]
+            progress_text = ('Daytona setup output:\n' + log_tail) if log_tail else 'Daytona sandbox setup is running…'
+        else:
+            progress_text = str(message)[:1600]
+        progress_db = connect()
+        progress_db.execute("UPDATE assessments SET progress=? WHERE id=?", (progress_text, s['assessment_id']))
+        progress_db.commit(); progress_db.close()
+
+    # Prepare Daytona and pin the repository before any paid Muse challenge
+    # calls. If Git/runtime setup stalls or fails, the user can retry without
+    # paying to regenerate the patch and focused test first.
+    claim_languages = str((s.get('claims') or {}).get('languages', '')).lower()
+    python_files = sum(path.lower().endswith('.py') for path in s['files'])
+    node_files = sum(path.lower().endswith(('.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx')) for path in s['files'])
+    claims_python = 'python' in claim_languages
+    claims_node = any(name in claim_languages for name in ('javascript', 'typescript', 'node', 'react'))
+    if claims_python != claims_node:
+        runtime = 'python' if claims_python else 'node'
+    else:
+        runtime = 'python' if python_files and python_files >= node_files else 'node'
+    runtime_version = resolve_python_version(s['files']) if runtime == 'python' else None
+    needs_git_lfs = any(
+        path.lower().endswith('.gitattributes') and 'filter=lfs' in content.lower()
+        for path, content in s.get('files', {}).items()
+    )
+    clone = {'repo': s['repo'], 'commit': s['sha'], 'branch': s.get('branch', ''), 'token': s['token'], 'lfs': needs_git_lfs}
     try:
-        challenge = await prepare_verified_challenge({**s, 'knowledge': knowledge})
+        report_workspace_progress('Creating the Daytona sandbox before generating the challenge…')
+        s['workspace'] = await asyncio.to_thread(
+            container_workspace.create_workspace,
+            s['assessment_id'], {}, runtime, None, runtime_version,
+            clone=clone,
+            progress_callback=report_workspace_progress,
+        )
     except Exception as exc:
-        challenge_error = str(exc)[:300]
-        knowledge['challenge'] = {'status': 'unavailable', 'error': challenge_error}
+        challenge_error = f"Daytona workspace could not be created: {str(exc)[:240]}"
+        s['workspace'] = ''
+
+    if s.get('workspace'):
+        report_workspace_progress('Repository is ready. Mapping the candidate claim to a focused challenge…')
+        try:
+            challenge = await prepare_verified_challenge({**s, 'knowledge': knowledge})
+            private_oracle = {
+                'target_path': challenge['target_path'],
+                'function_name': challenge['recovery']['function_name'],
+                'language': challenge['language'],
+                'test_path': challenge.get('test_path'),
+                'fixed_source': challenge['original_source'],
+                'broken_source': challenge['mutated_source'],
+            }
+            workspace_files = {
+                challenge['target_path']: challenge['mutated_source'],
+                challenge['problem_path']: challenge['problem_content'],
+            }
+            if challenge.get('test_path'):
+                workspace_files[challenge['test_path']] = challenge['test_content']
+            if challenge.get('image_fixture_path') and challenge.get('image_fixture'):
+                workspace_files[challenge['image_fixture_path']] = challenge['image_fixture']
+            for path, content in workspace_files.items():
+                await asyncio.to_thread(container_workspace.write_file, s['workspace'], path, content)
+            await asyncio.to_thread(container_workspace.write_oracle, s['workspace'], private_oracle)
+        except Exception as exc:
+            challenge = None
+            challenge_error = str(exc)[:300]
+            knowledge['challenge'] = {'status': 'unavailable', 'error': challenge_error}
+
     if challenge and knowledge.get('repo_id'):
         try:
             recovery = challenge['recovery']
@@ -249,60 +317,8 @@ async def prepare(s:State):
             )
         except Exception as exc:
             knowledge['challenge_guidance_error'] = str(exc)[:300]
-    challenge_error = challenge_error or ''
-    if challenge:
-        runtime = challenge['language']
-    else:
-        runtime = 'python' if any(path.lower().endswith('.py') for path in s['files']) else 'node'
-    try:
-        private_oracle = None
-        if challenge:
-            private_oracle = {
-                'target_path': challenge['target_path'],
-                'function_name': challenge['recovery']['function_name'],
-                'language': challenge['language'],
-                'test_path': challenge.get('test_path'),
-                'fixed_source': challenge['original_source'],
-                'broken_source': challenge['mutated_source'],
-            }
-        workspace_files = {}
-        if challenge:
-            workspace_files[challenge['target_path']] = challenge['mutated_source']
-            workspace_files[challenge['problem_path']] = challenge['problem_content']
-            if challenge.get('test_path'):
-                workspace_files[challenge['test_path']] = challenge['test_content']
-            if challenge.get('image_fixture_path') and challenge.get('image_fixture'):
-                workspace_files[challenge['image_fixture_path']] = challenge['image_fixture']
-        clone = {'repo': s['repo'], 'commit': s['sha'], 'branch': s.get('branch', ''), 'token': s['token']}
-        # Daytona sandbox creation, repository clone, and remote file staging
-        # preparation are blocking subprocess calls. Keep them off the ASGI
-        # event loop so status polling remains serviceable during setup.
-        def report_workspace_progress(message):
-            if isinstance(message, dict):
-                log_tail = str(message.get('log', '')).strip()[-1400:]
-                progress_text = ('Daytona setup output:\n' + log_tail) if log_tail else 'Daytona sandbox setup is running…'
-            else:
-                progress_text = str(message)[:1600]
-            progress_db = connect()
-            progress_db.execute("UPDATE assessments SET progress=? WHERE id=?", (progress_text, s['assessment_id']))
-            progress_db.commit(); progress_db.close()
-
-        report_workspace_progress('Creating the Daytona sandbox…')
-        s['workspace'] = await asyncio.to_thread(
-            container_workspace.create_workspace,
-            s['assessment_id'], workspace_files, runtime, private_oracle,
-            challenge.get('runtime_version') if challenge else None,
-            clone=clone,
-            progress_callback=report_workspace_progress,
-        )
-    except Exception as exc:
-        challenge = None
-        challenge_error = f"Daytona workspace could not be created: {str(exc)[:240]}"
-        s['workspace'] = ''
-        try:
-            await mongo_database().repository_challenge_guidance.delete_one({'assessment_id': s['assessment_id']})
-        except Exception:
-            pass
+    if not challenge_error and not challenge:
+        challenge_error = 'Muse could not prepare a safe focused challenge.'
 
     challenge_id = str(uuid.uuid4()) if challenge else None
     if challenge:

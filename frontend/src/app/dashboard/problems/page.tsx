@@ -1,5 +1,7 @@
 "use client";
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -18,7 +20,7 @@ export default function ProblemsPage() {
         try {
           const res = await fetch(`/api/problems?userId=${currentUser.uid}`);
           if (res.ok) {
-            const data = await res.json();
+            const data = await readApiJson(res);
             setProblems(data);
           }
         } catch (error) {

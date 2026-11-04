@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useState, useEffect } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -53,7 +55,7 @@ export default function AnalysisPage() {
                 try {
                     const res = await fetch(`/api/resume?email=${encodeURIComponent(user.email)}`)
                     if (res.ok) {
-                        const json = await res.json()
+                        const json = await readApiJson(res)
                         if (json.success && json.data) {
                             setResume(json.data)
                         }

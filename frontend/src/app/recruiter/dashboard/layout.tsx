@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -41,7 +43,7 @@ export default function RecruiterDashboardLayout({
                         body: JSON.stringify({ uid: user.uid }),
                     })
                     if (res.ok) {
-                        const data = await res.json()
+                        const data = await readApiJson(res)
                         if (data.companyName) setCompanyName(data.companyName)
                     }
                 } catch (e) {}

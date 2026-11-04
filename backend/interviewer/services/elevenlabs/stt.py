@@ -25,6 +25,9 @@ def _url() -> str:
     return "wss://api.elevenlabs.io/v1/speech-to-text/realtime?" + urlencode({
         "model_id": os.getenv("ELEVENLABS_STT_MODEL", "scribe_v2_realtime"),
         "audio_format": "pcm_16000",
+        # Keep candidate speech recognition in English instead of auto-detecting
+        # and transcribing whichever language is spoken.
+        "language_code": "en",
         "commit_strategy": "manual",
         "filter_background_audio": "true",
     })

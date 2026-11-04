@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -41,7 +43,7 @@ export default function PostJobPage() {
                         body: JSON.stringify({ uid: currentUser.uid })
                     })
                     if (res.ok) {
-                        const prof = await res.json()
+                        const prof = await readApiJson(res)
                         if (prof.companyName) {
                             setFormData((prev) => ({ ...prev, company: prof.companyName }))
                         }

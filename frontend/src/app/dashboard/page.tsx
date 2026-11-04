@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -30,7 +32,7 @@ export default function DashboardHome() {
                         `/api/candidate/interviews?applicantUid=${user.uid}&applicantEmail=${encodeURIComponent(user.email || "")}`
                     )
                     if (res.ok) {
-                        const data = await res.json()
+                        const data = await readApiJson(res)
                         setActiveInterviews((data.queue || []).length)
                         setCompletedInterviews((data.completed || []).length)
                     }

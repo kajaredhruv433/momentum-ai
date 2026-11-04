@@ -9,6 +9,7 @@ import { Briefcase, MapPin, DollarSign, Building2, Search, Filter, CheckCircle2,
 
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
+import { readApiJson } from "@/lib/api-response"
 
 export default function JobsPage() {
     const [jobs, setJobs] = useState<any[]>([])
@@ -25,7 +26,7 @@ export default function JobsPage() {
     const fetchJobs = async () => {
         try {
             const res = await fetch("/api/jobs")
-            const data = await res.json()
+            const data = await readApiJson(res)
             if (!Array.isArray(data)) return
 
             const seenIds = new Set<string>()
@@ -79,7 +80,7 @@ export default function JobsPage() {
                 if (user.email) params.set("email", user.email)
                 params.set("uid", user.uid)
                 const resumeResponse = await fetch(`/api/resume?${params.toString()}`)
-                const resumeResult = await resumeResponse.json()
+                const resumeResult = await readApiJson(resumeResponse)
                 const resume = resumeResult?.data
                 if (!resume) throw new Error("Save your resume before searching by resume.")
                 query = JSON.stringify(resume).slice(0, 1800)
@@ -89,8 +90,7 @@ export default function JobsPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query, limit: 30 })
             })
-            const data = await response.json()
-            if (!response.ok) throw new Error(data.detail || "Job search failed.")
+            const data = await readApiJson(response)
             setSemanticResults(true)
             setSearchNotice("")
             setJobs(Array.isArray(data) ? data.map((job: any, i: number) => ({
@@ -115,7 +115,7 @@ export default function JobsPage() {
                 try {
                     const res = await fetch(`/api/applications/user/${user.uid}`)
                     if (res.ok) {
-                        const apps = await res.json()
+                        const apps = await readApiJson(res)
                         const map: Record<string, any> = {}
                         apps.forEach((app: any) => {
                             const jId = String(app.jobId?.$oid || app.jobId)
@@ -154,13 +154,13 @@ export default function JobsPage() {
             })
 
             if (res.ok) {
-                const app = await res.json()
+                const app = await readApiJson(res)
                 setAppliedMap((prev) => ({
                     ...prev,
                     [job.id]: app
                 }))
             } else {
-                const err = await res.json()
+                const err = await readApiJson(res)
                 alert(err.detail || err.error || "Failed to apply")
             }
         } catch (error) {

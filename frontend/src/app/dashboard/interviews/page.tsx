@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
@@ -89,7 +91,7 @@ export default function CandidateInterviewsPage() {
                         `/api/candidate/interviews?applicantUid=${currentUser.uid}&applicantEmail=${encodeURIComponent(currentUser.email || "")}`
                     )
                     if (res.ok) {
-                        const data = await res.json()
+                        const data = await readApiJson(res)
                         setQueue(data.queue || [])
                         setCompleted(data.completed || [])
                         setTotalApplied(data.totalApplied || 0)

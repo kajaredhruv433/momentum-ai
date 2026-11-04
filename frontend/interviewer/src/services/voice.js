@@ -1,5 +1,7 @@
 /** Browser microphone + ElevenLabs audio client. Provider calls stay server-side. */
 const TURN_END_SILENCE_MS = 1200;
+const BARGE_IN_RMS_THRESHOLD = 0.018;
+const BARGE_IN_HOLD_MS = 160;
 
 export class ElevenLabsVoiceService {
   constructor() {
@@ -10,6 +12,7 @@ export class ElevenLabsVoiceService {
     this.onStatusCallback = null;
     this.onSilenceCountdownCallback = null; this.partialAt = 0; this.silenceTimer = null;
     this.speechStarted = false; this.lastVoiceActivityAt = 0; this.commitRequested = false;
+    this.bargeInStartedAt = 0;
     this.lastSpokenKey = ''; this.lastSpokenAt = 0;
     this.speechRequestId = 0; this.speechAbortController = null;
     this.sttRetryTimer = null; this.sttRetryDelay = 1000; this.closed = false; this.sttTerminal = false;
@@ -52,11 +55,17 @@ export class ElevenLabsVoiceService {
       for (let i = 0; i < input.length; i++) energy += input[i] * input[i];
       const rms = Math.sqrt(energy / input.length);
       this.onVolumeLevelCallback?.(Math.min(100, Math.round(rms * 250)));
-      // Use microphone activity as well as transcript updates. Realtime STT
-      // may pause partial results while the candidate is still speaking.
-      if (this.listening && !this.speaking && !this.muted && rms >= 0.018) this._noteVoiceActivity();
-      // Keep streaming microphone frames while TTS is playing as well. This
-      // is required for barge-in; only an actual STT transcript may interrupt.
+      if (this.listening && !this.muted && rms >= BARGE_IN_RMS_THRESHOLD) {
+        this._noteVoiceActivity();
+        if (this.speaking) {
+          if (!this.bargeInStartedAt) this.bargeInStartedAt = Date.now();
+          else if (Date.now() - this.bargeInStartedAt >= BARGE_IN_HOLD_MS) this._interruptForCandidateSpeech();
+        }
+      } else {
+        this.bargeInStartedAt = 0;
+      }
+      // Keep streaming microphone frames while TTS is playing so live
+      // transcription can update after the immediate voice activity cutoff.
       if (this.socket?.readyState === WebSocket.OPEN) {
         // ElevenLabs expects PCM16 at 16 kHz. Browser devices commonly run at
         // 44.1/48 kHz, so resample before encoding instead of relabeling audio.
@@ -115,7 +124,7 @@ export class ElevenLabsVoiceService {
   _sttEvent(event) {
     if (event.type === 'partial' && event.text?.trim()) {
       this.partialAt = Date.now(); this._noteVoiceActivity(); this.onTranscriptCallback?.(event.text); this.onSpeechDetectedCallback?.();
-      if (this.speaking) { this.stopSpeaking(); this.onBargeInCallback?.(); }
+      if (this.speaking) this._interruptForCandidateSpeech();
       // A recognized transcript is proof that the candidate has taken the
       // floor, including when they began speaking during interviewer TTS.
       this.listening = true;
@@ -131,6 +140,12 @@ export class ElevenLabsVoiceService {
       if (event.terminal) this.sttTerminal = true;
       this.onStatusCallback?.(event.message ? `Speech recognition error: ${event.message}` : 'Speech recognition error');
     }
+  }
+  _interruptForCandidateSpeech() {
+    if (!this.speaking) return;
+    this.bargeInStartedAt = 0;
+    this.stopSpeaking();
+    this.onBargeInCallback?.();
   }
   startListening(callback) { if (callback) this.onTranscriptCallback = callback; this.listening = true; }
   stopListening() { this.listening = false; clearTimeout(this.silenceTimer); this.speechStarted = false; this.commitRequested = false; }
@@ -206,6 +221,7 @@ export class ElevenLabsVoiceService {
     }
   }
   stopSpeaking() {
+    this.bargeInStartedAt = 0;
     this.speechRequestId++;
     this.speechAbortController?.abort();
     this.speechAbortController = null;

@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -47,7 +49,7 @@ export default function RecruiterHome() {
                     body: JSON.stringify({ uid: user.uid }),
                 })
                 if (profileRes.ok) {
-                    const profileData = await profileRes.json()
+                    const profileData = await readApiJson(profileRes)
                     if (profileData.name) setUserName(profileData.name)
                     if (profileData.companyName) setCompanyName(profileData.companyName)
                 }
@@ -57,7 +59,7 @@ export default function RecruiterHome() {
                 try {
                     const jobsRes = await fetch(`/api/jobs?recruiterUid=${user.uid}`)
                     if (jobsRes.ok) {
-                        jobsData = await jobsRes.json()
+                        jobsData = await readApiJson(jobsRes)
                     }
                 } catch (e) {
                     console.error("Jobs fetch error:", e)
@@ -72,7 +74,7 @@ export default function RecruiterHome() {
                         body: JSON.stringify({ recruiterUid: user.uid })
                     })
                     if (applicantsRes.ok) {
-                        applicantsData = await applicantsRes.json()
+                        applicantsData = await readApiJson(applicantsRes)
                     }
                 } catch (e) {
                     console.error("Applicants fetch error:", e)
@@ -87,7 +89,7 @@ export default function RecruiterHome() {
                         body: JSON.stringify({ recruiterUid: user.uid })
                     })
                     if (interviewedRes.ok) {
-                        interviewedData = await interviewedRes.json()
+                        interviewedData = await readApiJson(interviewedRes)
                     }
                 } catch (e) {
                     console.error("Interviewed candidates fetch error:", e)

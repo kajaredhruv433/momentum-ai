@@ -1,5 +1,7 @@
 "use client"
 
+import { readApiJson } from "@/lib/api-response";
+
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
@@ -55,7 +57,7 @@ export default function RegisterPage() {
                         body: JSON.stringify({ uid: user.uid }),
                     })
                     if (res.ok) {
-                        const data = await res.json()
+                        const data = await readApiJson(res)
                         const dbRole = data.role || "user"
                         localStorage.setItem("momentum_role", dbRole)
                         localStorage.setItem("momentum_user_id", user.uid)
@@ -102,7 +104,7 @@ export default function RegisterPage() {
             })
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await readApiJson(response);
                 throw new Error(errorData.detail || errorData.message || "Failed to sync user data.");
             }
 
@@ -136,7 +138,7 @@ export default function RegisterPage() {
             })
 
             if (checkRes.ok) {
-                const existingData = await checkRes.json()
+                const existingData = await readApiJson(checkRes)
                 // If user is already in DB as recruiter:
                 if (existingData.role === 'recruiter') {
                     localStorage.setItem("momentum_role", "recruiter")
@@ -204,7 +206,7 @@ export default function RegisterPage() {
             })
 
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await readApiJson(response);
                 throw new Error(errorData.detail || errorData.message || "Failed to sync user data.");
             }
 

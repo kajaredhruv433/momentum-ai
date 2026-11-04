@@ -21,25 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 def as_json(value: Any) -> str:
-    """Format any object as compact JSON to reduce prompt size."""
-    return json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
-
-
-def history_for_prompt(history: List[dict], limit: int = 6, answer_limit: int = 2400) -> List[dict]:
-    """Keep recent, relevant interview context compact for low-latency decisions."""
-    compact = []
-    for item in history[-limit:]:
-        answer = str(item.get("candidate_answer_for_prompt", item.get("candidate_answer", "")) or "")
-        if len(answer) > answer_limit:
-            answer = answer[:answer_limit] + "…[truncated]"
-        compact.append({
-            "question": str(item.get("question", ""))[:800],
-            "candidate_answer": answer,
-            "question_kind": item.get("question_kind"),
-            "selected_area": item.get("selected_area"),
-            "stage": item.get("stage"),
-        })
-    return compact
+    """Format any object as clean, indented JSON string."""
+    return json.dumps(value, ensure_ascii=False, default=str, indent=2)
 
 
 def repair_json(s: Any) -> Any:
@@ -153,24 +136,12 @@ def clean_text(value: str) -> str:
     return text.strip().strip('"`').strip()
 
 
-def prompt_text(
-    prompt: str,
-    *,
-    retries: int = 1,
-    max_output_tokens: Optional[int] = None,
-    timeout_seconds: Optional[float] = None,
-    retry_empty: bool = True,
-) -> str:
+def prompt_text(prompt: str, *, retries: int = 1) -> str:
     """Execute ask_llm with retry support for empty responses."""
     last_err = None
     for attempt in range(retries + 1):
         try:
-            result = ask_llm(
-                prompt,
-                max_output_tokens=max_output_tokens,
-                timeout_seconds=timeout_seconds,
-                retry_empty=retry_empty,
-            )
+            result = ask_llm(prompt)
             cleaned = clean_text(result)
             if cleaned:
                 return cleaned

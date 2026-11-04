@@ -11,6 +11,7 @@ import { useRef } from "react"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 import { auth } from "@/lib/firebase"
+import { readApiJson } from "@/lib/api-response"
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth"
 import { useRouter } from "next/navigation"
 
@@ -113,7 +114,7 @@ export default function ResumePage() {
                 // Fetch existing resume
                 try {
                     const res = await fetch(`/api/resume?email=${user.email}`)
-                    const result = await res.json()
+                    const result = await readApiJson(res)
                     if (result.success && result.data) {
                         setData(result.data)
                     } else {
@@ -184,7 +185,7 @@ export default function ResumePage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
-            const result = await response.json();
+            const result = await readApiJson(response);
             if (result.success) {
                 if (result.data) {
                     setData(result.data);
@@ -250,7 +251,7 @@ export default function ResumePage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ resumeData: payload, email: currentUser?.email, uid: currentUser?.uid }),
             });
-            const result = await res.json();
+            const result = await readApiJson(res);
             if (result.success && result.analysis) {
                 setData(prev => ({ ...prev, analysis: result.analysis }));
                 router.push('/dashboard/analysis');
